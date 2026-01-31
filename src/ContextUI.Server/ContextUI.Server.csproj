@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ContextUI.Core\ContextUI.Core.csproj" />
+    <ProjectReference Include="..\ContextUI.LLM\ContextUI.LLM.csproj" />
+    <ProjectReference Include="..\ContextUI.Framework\ContextUI.Framework.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
