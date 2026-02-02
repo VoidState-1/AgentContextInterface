@@ -9,12 +9,14 @@ namespace ContextUI.Core.Services;
 public class ActionExecutor
 {
     private readonly IWindowManager _windows;
-    private readonly ILogManager _logs;
+    private readonly ISeqClock _clock;
+    private readonly IEventBus _events;
 
-    public ActionExecutor(IWindowManager windows, ILogManager logs)
+    public ActionExecutor(IWindowManager windows, ISeqClock clock, IEventBus events)
     {
         _windows = windows;
-        _logs = logs;
+        _clock = clock;
+        _events = events;
     }
 
     /// <summary>
@@ -46,7 +48,10 @@ public class ActionExecutor
             return ActionResult.Fail(validationError);
         }
 
-        // 4. 执行操作
+        // 4. 分配 seq
+        var seq = _clock.Next();
+
+        // 5. 执行操作
         ActionResult result;
         if (window.Handler != null)
         {
@@ -64,19 +69,18 @@ public class ActionExecutor
             result = ActionResult.Ok();
         }
 
-        // 5. 记录日志
-        var logEntry = new ActionLogEntry
-        {
-            WindowId = windowId,
-            ActionId = actionId,
-            Success = result.Success,
-            Summary = result.Summary,
-            IsPersistent = result.Summary != null
-        };
-        var seq = _logs.Append(logEntry);
         result.LogSeq = seq;
 
-        // 6. 处理结果
+        // 6. 发布事件（供日志系统订阅）
+        _events.Publish(new ActionExecutedEvent(
+            Seq: seq,
+            WindowId: windowId,
+            ActionId: actionId,
+            Success: result.Success,
+            Summary: result.Summary
+        ));
+
+        // 7. 处理结果
         if (result.ShouldClose || window.Options.AutoCloseOnAction)
         {
             _windows.Remove(windowId);
@@ -106,3 +110,24 @@ public class ActionExecutor
         return null;
     }
 }
+
+/// <summary>
+/// 操作执行事件（供日志系统订阅）
+/// </summary>
+public record ActionExecutedEvent(
+    int Seq,
+    string WindowId,
+    string ActionId,
+    bool Success,
+    string? Summary
+) : IEvent;
+
+/// <summary>
+/// 应用创建事件
+/// </summary>
+public record AppCreatedEvent(
+    int Seq,
+    string AppName,
+    string? Target,
+    bool Success
+) : IEvent;

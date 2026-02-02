@@ -14,7 +14,12 @@ public class Window : IRenderable
     public required string Id { get; init; }
 
     /// <summary>
-    /// 窗口内容（可渲染对象）
+    /// 窗口描述（告诉 AI 这是什么、怎么操作，类似 prompt）
+    /// </summary>
+    public IRenderable? Description { get; set; }
+
+    /// <summary>
+    /// 窗口主内容
     /// </summary>
     public required IRenderable Content { get; set; }
 
@@ -39,6 +44,11 @@ public class Window : IRenderable
     public IActionHandler? Handler { get; set; }
 
     /// <summary>
+    /// 所属应用名称
+    /// </summary>
+    public string? AppName { get; set; }
+
+    /// <summary>
     /// 渲染为 XML
     /// </summary>
     public XElement ToXml()
@@ -47,21 +57,53 @@ public class Window : IRenderable
             new XAttribute("id", Id)
         );
 
-        // 内容
-        window.Add(new XElement("content", XElement.Parse($"<root>{Content.Render()}</root>").Value));
-
-        // 操作
-        var actions = new XElement("actions");
-        foreach (var action in Actions)
+        // 精简模式：只输出内容
+        if (Options.RenderMode == RenderMode.Compact)
         {
-            actions.Add(action.ToXml());
+            window.Add(new XAttribute("compact", true));
+            window.Value = Content.Render();
+            return window;
         }
-        window.Add(actions);
+
+        // 完整模式
+
+        // Meta（如果不隐藏）
+        if (!Meta.Hidden)
+        {
+            var meta = new XElement("meta",
+                new XElement("tokens", Meta.Tokens),
+                new XElement("created_at", Meta.CreatedAt),
+                new XElement("updated_at", Meta.UpdatedAt)
+            );
+            window.Add(meta);
+        }
+
+        // Description
+        if (Description != null)
+        {
+            window.Add(new XElement("description", Description.Render()));
+        }
+
+        // Content
+        window.Add(new XElement("content", Content.Render()));
+
+        // Actions
+        if (Actions.Count > 0)
+        {
+            var actions = new XElement("actions");
+            foreach (var action in Actions)
+            {
+                actions.Add(action.ToXml());
+            }
+            window.Add(actions);
+        }
 
         return window;
     }
 
     public string Render() => ToXml().ToString(SaveOptions.DisableFormatting);
+
+    public string RenderFormatted() => ToXml().ToString(SaveOptions.None);
 }
 
 /// <summary>
@@ -75,14 +117,51 @@ public class WindowOptions
     public bool Closable { get; init; } = true;
 
     /// <summary>
-    /// 执行任意操作后是否自动关闭（Popup 场景）
+    /// 执行任意操作后是否自动关闭
     /// </summary>
     public bool AutoCloseOnAction { get; init; } = false;
 
     /// <summary>
-    /// 窗口标题（可选）
+    /// 渲染模式
     /// </summary>
-    public string? Title { get; init; }
+    public RenderMode RenderMode { get; init; } = RenderMode.Full;
+
+    /// <summary>
+    /// 刷新模式
+    /// </summary>
+    public RefreshMode RefreshMode { get; init; } = RefreshMode.InPlace;
+}
+
+/// <summary>
+/// 渲染模式
+/// </summary>
+public enum RenderMode
+{
+    /// <summary>
+    /// 完整模式：包含 meta, description, content, actions
+    /// </summary>
+    Full,
+
+    /// <summary>
+    /// 精简模式：只有内容，无包装
+    /// </summary>
+    Compact
+}
+
+/// <summary>
+/// 刷新模式
+/// </summary>
+public enum RefreshMode
+{
+    /// <summary>
+    /// 原地刷新（更新现有上下文消息）
+    /// </summary>
+    InPlace,
+
+    /// <summary>
+    /// 追加刷新（添加新消息到末尾）
+    /// </summary>
+    Append
 }
 
 /// <summary>
