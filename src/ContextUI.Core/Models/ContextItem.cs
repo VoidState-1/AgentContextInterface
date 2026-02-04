@@ -21,14 +21,9 @@ public enum ContextItemType
     Assistant,
 
     /// <summary>
-    /// 窗口引用（动态渲染）
+    /// 窗口引用（动态渲染，包括日志窗口）
     /// </summary>
-    Window,
-
-    /// <summary>
-    /// 日志/事件
-    /// </summary>
-    Log
+    Window
 }
 
 /// <summary>
@@ -47,9 +42,9 @@ public class ContextItem
     public required ContextItemType Type { get; init; }
 
     /// <summary>
-    /// 创建时的序列号（决定排序位置）
+    /// 创建时的序列号（决定排序位置，由 ContextManager 分配）
     /// </summary>
-    public required int Seq { get; init; }
+    public int Seq { get; internal set; }
 
     /// <summary>
     /// 内容（对于 Window 类型，这是 WindowId；对于其他类型，是实际内容）
@@ -62,12 +57,8 @@ public class ContextItem
     public bool IsObsolete { get; set; }
 
     /// <summary>
-    /// 是否粘滞（Token 压缩时优先保留）
-    /// </summary>
-    public bool IsSticky { get; set; }
-
-    /// <summary>
     /// 估算的 Token 数量（缓存）
     /// </summary>
     public int EstimatedTokens { get; set; }
 }
+

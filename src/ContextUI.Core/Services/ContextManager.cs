@@ -9,15 +9,29 @@ namespace ContextUI.Core.Services;
 public class ContextManager : IContextManager
 {
     private readonly List<ContextItem> _items = [];
+    private readonly ISeqClock _clock;
     private readonly object _lock = new();
 
+    public ContextManager(ISeqClock clock)
+    {
+        _clock = clock;
+    }
+
     /// <summary>
-    /// 添加上下文项
+    /// 当前序列号
+    /// </summary>
+    public int CurrentSeq => _clock.CurrentSeq;
+
+    /// <summary>
+    /// 添加上下文项（自动分配 Seq）
     /// </summary>
     public void Add(ContextItem item)
     {
         lock (_lock)
         {
+            // 自动分配 seq
+            item.Seq = _clock.Next();
+
             // 如果是窗口类型，标记同一窗口的旧项为过时
             if (item.Type == ContextItemType.Window)
             {
@@ -27,7 +41,6 @@ public class ContextManager : IContextManager
                     !i.IsObsolete))
                 {
                     old.IsObsolete = true;
-                    old.IsSticky = false;
                 }
             }
 
@@ -72,7 +85,6 @@ public class ContextManager : IContextManager
                 i.Content == windowId))
             {
                 item.IsObsolete = true;
-                item.IsSticky = false;
             }
         }
     }
@@ -94,20 +106,21 @@ public class ContextManager : IContextManager
     }
 
     /// <summary>
-    /// 清理过时的非粘滞日志项
+    /// 清理过旧的上下文项（保留最近的 maxItems 个非窗口项）
     /// </summary>
     public void Prune(int maxItems = 100)
     {
         lock (_lock)
         {
-            var logItems = _items
-                .Where(i => i.Type == ContextItemType.Log && !i.IsSticky)
+            // 只清理非窗口、非系统的对话项
+            var conversationItems = _items
+                .Where(i => i.Type == ContextItemType.User || i.Type == ContextItemType.Assistant)
                 .OrderBy(i => i.Seq)
                 .ToList();
 
-            if (logItems.Count > maxItems)
+            if (conversationItems.Count > maxItems)
             {
-                var toRemove = logItems.Take(logItems.Count - maxItems).ToList();
+                var toRemove = conversationItems.Take(conversationItems.Count - maxItems).ToList();
                 foreach (var item in toRemove)
                 {
                     _items.Remove(item);
@@ -116,3 +129,4 @@ public class ContextManager : IContextManager
         }
     }
 }
+

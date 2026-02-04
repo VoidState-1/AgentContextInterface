@@ -8,7 +8,12 @@ namespace ContextUI.Core.Abstractions;
 public interface IContextManager
 {
     /// <summary>
-    /// 添加上下文项
+    /// 当前序列号（只读）
+    /// </summary>
+    int CurrentSeq { get; }
+
+    /// <summary>
+    /// 添加上下文项（自动分配 Seq）
     /// </summary>
     void Add(ContextItem item);
 
@@ -18,7 +23,7 @@ public interface IContextManager
     IReadOnlyList<ContextItem> GetAll();
 
     /// <summary>
-    /// 获取有效的上下文项（排除 IsObsolete）
+    /// 获取有效的上下文项（排除 IsObsolete，按 seq 排序）
     /// </summary>
     IReadOnlyList<ContextItem> GetActive();
 
@@ -33,7 +38,8 @@ public interface IContextManager
     ContextItem? GetWindowItem(string windowId);
 
     /// <summary>
-    /// 清理过时的非粘滞项
+    /// 清理过旧的上下文项
     /// </summary>
     void Prune(int maxItems = 100);
 }
+

@@ -20,6 +20,22 @@ public class LlmMessage
 }
 
 /// <summary>
+/// 渲染选项
+/// </summary>
+public class RenderOptions
+{
+    /// <summary>
+    /// 最大 Token 数
+    /// </summary>
+    public int MaxTokens { get; set; } = 8000;
+
+    /// <summary>
+    /// 对话保护区（对话 Token 低于此值时停止裁剪对话，开始裁剪窗口）
+    /// </summary>
+    public int MinConversationTokens { get; set; } = 2000;
+}
+
+/// <summary>
 /// 上下文渲染器接口
 /// </summary>
 public interface IContextRenderer
@@ -27,13 +43,10 @@ public interface IContextRenderer
     /// <summary>
     /// 将上下文项列表渲染为 LLM 消息列表
     /// </summary>
-    /// <param name="items">上下文项列表（已排序）</param>
-    /// <param name="windowManager">窗口管理器（用于获取窗口最新内容）</param>
-    /// <param name="maxTokens">最大 Token 数</param>
     IReadOnlyList<LlmMessage> Render(
         IReadOnlyList<ContextItem> items,
         IWindowManager windowManager,
-        int maxTokens = 8000);
+        RenderOptions? options = null);
 }
 
 /// <summary>
@@ -47,13 +60,13 @@ public class ContextRenderer : IContextRenderer
     public IReadOnlyList<LlmMessage> Render(
         IReadOnlyList<ContextItem> items,
         IWindowManager windowManager,
-        int maxTokens = 8000)
+        RenderOptions? options = null)
     {
-        var messages = new List<LlmMessage>();
-        int totalTokens = 0;
+        options ??= new RenderOptions();
 
-        // 第一遍：计算所有消息并估算 Token
-        var candidates = new List<(ContextItem Item, LlmMessage Message, int Tokens)>();
+        // 第一遍：渲染所有消息并计算 Token
+        var candidates = new List<RenderCandidate>();
+        int totalTokens = 0;
 
         foreach (var item in items)
         {
@@ -61,47 +74,83 @@ public class ContextRenderer : IContextRenderer
             if (message == null) continue;
 
             var tokens = EstimateTokens(message.Content);
-            candidates.Add((item, message, tokens));
+            candidates.Add(new RenderCandidate
+            {
+                Item = item,
+                Message = message,
+                Tokens = tokens,
+                Retained = true
+            });
             totalTokens += tokens;
         }
 
         // 如果不超限，直接返回
-        if (totalTokens <= maxTokens)
+        if (totalTokens <= options.MaxTokens)
         {
             return candidates.Select(c => c.Message).ToList();
         }
 
-        // 超限时，从最早的非粘滞项开始裁剪
-        var retained = new bool[candidates.Count];
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            retained[i] = true;
-        }
+        // 超限时，执行裁剪策略
+        TrimToFit(candidates, ref totalTokens, options);
 
-        for (int i = 0; i < candidates.Count && totalTokens > maxTokens; i++)
-        {
-            var (item, _, tokens) = candidates[i];
+        // 构建最终消息列表
+        return candidates
+            .Where(c => c.Retained)
+            .Select(c => c.Message)
+            .ToList();
+    }
 
-            // 粘滞项和系统消息不裁剪
-            if (item.IsSticky || item.Type == ContextItemType.System)
+    /// <summary>
+    /// 裁剪策略：
+    /// 1. 先裁剪旧的 User/Assistant 对话
+    /// 2. 当对话 Token 低于保护阈值时，开始裁剪旧的 Window
+    /// 3. System 永不裁剪
+    /// </summary>
+    private void TrimToFit(List<RenderCandidate> candidates, ref int totalTokens, RenderOptions options)
+    {
+        // 计算当前对话 Token
+        int conversationTokens = candidates
+            .Where(c => c.Retained && (c.Item.Type == ContextItemType.User || c.Item.Type == ContextItemType.Assistant))
+            .Sum(c => c.Tokens);
+
+        // 第一阶段：裁剪对话
+        for (int i = 0; i < candidates.Count && totalTokens > options.MaxTokens; i++)
+        {
+            var candidate = candidates[i];
+
+            // 只裁剪对话
+            if (candidate.Item.Type != ContextItemType.User && candidate.Item.Type != ContextItemType.Assistant)
             {
                 continue;
             }
 
-            retained[i] = false;
-            totalTokens -= tokens;
-        }
-
-        // 构建最终消息列表
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            if (retained[i])
+            // 检查是否达到对话保护阈值
+            if (conversationTokens - candidate.Tokens < options.MinConversationTokens)
             {
-                messages.Add(candidates[i].Message);
+                break;  // 进入第二阶段
             }
+
+            candidate.Retained = false;
+            totalTokens -= candidate.Tokens;
+            conversationTokens -= candidate.Tokens;
         }
 
-        return messages;
+        // 第二阶段：裁剪窗口（如果还超限）
+        for (int i = 0; i < candidates.Count && totalTokens > options.MaxTokens; i++)
+        {
+            var candidate = candidates[i];
+
+            // 只裁剪窗口
+            if (candidate.Item.Type != ContextItemType.Window)
+            {
+                continue;
+            }
+
+            candidate.Retained = false;
+            totalTokens -= candidate.Tokens;
+        }
+
+        // System 永不裁剪
     }
 
     /// <summary>
@@ -130,12 +179,6 @@ public class ContextRenderer : IContextRenderer
             },
 
             ContextItemType.Window => RenderWindowItem(item, windowManager),
-
-            ContextItemType.Log => new LlmMessage
-            {
-                Role = "user",  // 日志作为用户观察反馈
-                Content = item.Content
-            },
 
             _ => null
         };
@@ -172,4 +215,16 @@ public class ContextRenderer : IContextRenderer
         // 取平均值约 2.5 字符/token
         return (int)Math.Ceiling(content.Length / 2.5);
     }
+
+    /// <summary>
+    /// 渲染候选项
+    /// </summary>
+    private class RenderCandidate
+    {
+        public required ContextItem Item { get; init; }
+        public required LlmMessage Message { get; init; }
+        public required int Tokens { get; init; }
+        public bool Retained { get; set; }
+    }
 }
+
