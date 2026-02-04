@@ -11,17 +11,22 @@ public class FrameworkHost
 {
     private readonly Dictionary<string, ContextApp> _apps = [];
     private readonly Dictionary<string, InMemoryAppState> _appStates = [];
-    private readonly IContext _context;
+    private readonly Dictionary<string, string> _windowToApp = [];  // windowId -> appName
+    private readonly Dictionary<string, string?> _windowIntents = [];  // windowId -> intent
+    private readonly RuntimeContext _context;
     private readonly ISeqClock _clock;
     private readonly IEventBus _events;
     private readonly IWindowManager _windows;
 
-    public FrameworkHost(IContext context)
+    public FrameworkHost(RuntimeContext context)
     {
         _context = context;
         _clock = context.Clock;
         _events = context.Events;
         _windows = context.Windows;
+
+        // 设置刷新处理器
+        _context.SetRefreshHandler(RefreshWindow);
     }
 
     /// <summary>
@@ -50,6 +55,18 @@ public class FrameworkHost
     }
 
     /// <summary>
+    /// 通过窗口 ID 获取应用
+    /// </summary>
+    public ContextApp? GetAppByWindowId(string windowId)
+    {
+        if (_windowToApp.TryGetValue(windowId, out var appName))
+        {
+            return _apps.GetValueOrDefault(appName);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// 启动应用
     /// </summary>
     public Window Launch(string appName, string? intent = null)
@@ -70,8 +87,16 @@ public class FrameworkHost
         var window = definition.ToWindow();
         window.AppName = appName;
 
-        // 发布事件
+        // 设置 seq
         var seq = _clock.Next();
+        window.Meta.CreatedAt = seq;
+        window.Meta.UpdatedAt = seq;
+
+        // 记录映射
+        _windowToApp[window.Id] = appName;
+        _windowIntents[window.Id] = intent;
+
+        // 发布事件
         _events.Publish(new AppCreatedEvent(
             Seq: seq,
             AppName: appName,
@@ -86,6 +111,45 @@ public class FrameworkHost
     }
 
     /// <summary>
+    /// 刷新窗口（原地更新，保持 CreatedAt 不变）
+    /// </summary>
+    public void RefreshWindow(string windowId)
+    {
+        var window = _windows.Get(windowId);
+        if (window == null) return;
+
+        var app = GetAppByWindowId(windowId);
+        if (app == null) return;
+
+        var intent = _windowIntents.GetValueOrDefault(windowId);
+
+        // 调用应用的刷新方法获取新内容
+        var newDefinition = app.RefreshWindow(windowId, intent);
+
+        // 原地更新窗口属性
+        var oldCreatedAt = window.Meta.CreatedAt;
+
+        window.Description = newDefinition.Description;
+        window.Content = newDefinition.Content;
+        window.Actions.Clear();
+        window.Actions.AddRange(newDefinition.Actions.Select(a => a.ToActionDefinition()));
+
+        // 保持 CreatedAt 不变，只更新 UpdatedAt
+        window.Meta.CreatedAt = oldCreatedAt;
+        window.Meta.UpdatedAt = _clock.Next();
+
+        // 更新 Handler
+        window.Handler = new ContextActionHandler(newDefinition.Actions);
+
+        // 发布窗口更新事件
+        _events.Publish(new WindowRefreshedEvent(
+            Seq: window.Meta.UpdatedAt,
+            WindowId: windowId,
+            AppName: window.AppName ?? ""
+        ));
+    }
+
+    /// <summary>
     /// 关闭应用
     /// </summary>
     public void Close(string appName)
@@ -96,12 +160,23 @@ public class FrameworkHost
             foreach (var windowId in app.ManagedWindowIds.ToList())
             {
                 _windows.Remove(windowId);
+                _windowToApp.Remove(windowId);
+                _windowIntents.Remove(windowId);
             }
 
             app.OnDestroy();
         }
     }
 }
+
+/// <summary>
+/// 窗口刷新事件
+/// </summary>
+public record WindowRefreshedEvent(
+    int Seq,
+    string WindowId,
+    string AppName
+) : IEvent;
 
 /// <summary>
 /// 内存状态存储实现

@@ -85,4 +85,36 @@ public abstract class ContextApp
     /// </summary>
     /// <param name="intent">用户意图（可选）</param>
     public abstract ContextWindow CreateWindow(string? intent);
+
+    /// <summary>
+    /// 刷新窗口内容（框架调用）
+    /// 默认实现：重新调用 CreateWindow
+    /// </summary>
+    /// <param name="windowId">要刷新的窗口 ID</param>
+    /// <param name="intent">原始意图</param>
+    public virtual ContextWindow RefreshWindow(string windowId, string? intent = null)
+    {
+        return CreateWindow(intent);
+    }
+
+    // ========== 便捷方法 ==========
+
+    /// <summary>
+    /// 请求刷新指定窗口
+    /// </summary>
+    protected void RequestRefresh(string windowId)
+    {
+        Context.RequestRefresh(windowId);
+    }
+
+    /// <summary>
+    /// 请求刷新所有该应用管理的窗口
+    /// </summary>
+    protected void RequestRefreshAll()
+    {
+        foreach (var id in _managedWindowIds)
+        {
+            Context.RequestRefresh(id);
+        }
+    }
 }

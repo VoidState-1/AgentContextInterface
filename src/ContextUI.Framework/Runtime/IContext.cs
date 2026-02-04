@@ -24,6 +24,16 @@ public interface IContext
     ISeqClock Clock { get; }
 
     /// <summary>
+    /// 上下文管理（对话历史）
+    /// </summary>
+    IContextManager Context { get; }
+
+    /// <summary>
+    /// 请求刷新窗口（通知框架重新渲染窗口内容）
+    /// </summary>
+    void RequestRefresh(string windowId);
+
+    /// <summary>
     /// 获取服务
     /// </summary>
     T? GetService<T>() where T : class;
