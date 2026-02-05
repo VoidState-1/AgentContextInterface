@@ -1,6 +1,73 @@
+using ContextUI.LLM;
+using ContextUI.LLM.Abstractions;
+using ContextUI.LLM.Services;
+using ContextUI.Server.Endpoints;
+using ContextUI.Server.Hubs;
+using ContextUI.Server.Services;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// ========== 配置服务 ==========
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+// SignalR
+builder.Services.AddSignalR();
+
+// OpenRouter 配置
+builder.Services.Configure<OpenRouterConfig>(
+    builder.Configuration.GetSection(OpenRouterConfig.SectionName));
+
+// HTTP Client
+builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>();
+
+// 会话管理器（单例）
+builder.Services.AddSingleton<ISessionManager>(sp =>
+{
+    var llmBridge = sp.GetRequiredService<ILLMBridge>();
+    return new SessionManager(llmBridge);
+});
+
+// Hub 通知器
+builder.Services.AddSingleton<IContextUIHubNotifier, ContextUIHubNotifier>();
+
+// Swagger/OpenAPI
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
 
-app.MapGet("/", () => "Hello World!");
+// ========== 配置中间件 ==========
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseCors();
+
+// ========== 映射端点 ==========
+
+app.MapSessionEndpoints();
+app.MapInteractionEndpoints();
+app.MapWindowEndpoints();
+
+// SignalR Hub
+app.MapHub<ContextUIHub>("/hubs/contextui");
+
+// 健康检查
+app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Time = DateTime.UtcNow }));
+
+// ========== 启动 ==========
 
 app.Run();
