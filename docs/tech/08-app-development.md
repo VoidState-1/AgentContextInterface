@@ -1,10 +1,10 @@
 # 应用开发指南
 
-> 本文档指导如何在 ContextUI 框架中开发自定义应用。
+> 本文档指导如何在 ACI 框架中开发自定义应用。
 
 ## 1. 概述
 
-ContextUI 应用是封装特定功能的独立单元。每个应用可以：
+ACI 应用是封装特定功能的独立单元。每个应用可以：
 
 - 创建和管理自己的窗口
 - 定义窗口内容和可用操作
@@ -24,7 +24,7 @@ public class HelloApp : ContextApp
     {
         return new ContextWindow
         {
-            Content = new Text("Hello, ContextUI!")
+            Content = new Text("Hello, ACI!")
         };
     }
 }

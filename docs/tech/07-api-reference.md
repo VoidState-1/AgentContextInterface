@@ -1,6 +1,6 @@
 # API 参考手册
 
-> 本文档提供 ContextUI Server 的完整 API 参考。
+> 本文档提供 ACI Server 的完整 API 参考。
 
 ## 1. 概述
 
@@ -324,7 +324,7 @@ GET /health
 ### 6.1 连接
 
 ```
-WebSocket: /hubs/contextui
+WebSocket: /hubs/ACI
 ```
 
 ### 6.2 客户端方法
@@ -561,7 +561,7 @@ const sessionId = session.sessionId;
 
 // 2. 连接 SignalR（可选，用于实时更新）
 const connection = new signalR.HubConnectionBuilder()
-  .withUrl('/hubs/contextui')
+  .withUrl('/hubs/ACI')
   .build();
 
 connection.on("WindowCreated", w => console.log("新窗口:", w));

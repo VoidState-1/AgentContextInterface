@@ -4,7 +4,7 @@
 
 ## 1. 模块概述
 
-LLM 模块是 ContextUI 与 AI 世界的桥梁：
+LLM 模块是 ACI 与 AI 世界的桥梁：
 
 ```mermaid
 graph LR
@@ -355,14 +355,14 @@ public class InteractionResult
 
 ### 6.1 设计意图
 
-构建系统提示词，告诉 AI 如何使用 ContextUI。
+构建系统提示词，告诉 AI 如何使用 ACI。
 
 ### 6.2 系统提示词结构
 
 ```markdown
-# ContextUI 系统
+# ACI 系统
 
-你正在使用 ContextUI 系统与用户交互。
+你正在使用 ACI 系统与用户交互。
 
 ## 可用操作
 
@@ -391,7 +391,7 @@ public class InteractionResult
 ## 7. 目录结构
 
 ```
-ContextUI.LLM/
+ACI.LLM/
 ├── Abstractions/
 │   └── ILLMBridge.cs
 │

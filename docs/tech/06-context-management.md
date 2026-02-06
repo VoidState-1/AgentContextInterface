@@ -1,6 +1,6 @@
 # 上下文管理详解
 
-> 本文档深入解析 ContextUI 的上下文管理机制，包括上下文渲染、裁剪策略和 LLM 对话格式。
+> 本文档深入解析 ACI 的上下文管理机制，包括上下文渲染、裁剪策略和 LLM 对话格式。
 
 ## 1. 上下文模型
 
@@ -368,7 +368,7 @@ interface LlmMessage {
 [
   {
     "role": "system",
-    "content": "你是 ContextUI 助手..."
+    "content": "你是 ACI 助手..."
   },
   {
     "role": "user",
@@ -437,7 +437,7 @@ foreach (var item in context.GetAll())
 }
 
 // 输出示例：
-// [✓] [0001] System: 你是 ContextUI 助手...
+// [✓] [0001] System: 你是 ACI 助手...
 // [✓] [0002] User: 创建一个待办列表
 // [✓] [0003] Assistant: 好的，我来帮你创建...
 // [✓] [0004] Window: todo_12345

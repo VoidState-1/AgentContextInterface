@@ -331,7 +331,7 @@ classDiagram
 ## 8. 目录结构
 
 ```
-ContextUI.Framework/
+ACI.Framework/
 ├── Runtime/
 │   ├── IContext.cs
 │   ├── RuntimeContext.cs

@@ -4,7 +4,7 @@
 
 ## 1. 模块概述
 
-Server 模块是 ContextUI 的对外接口层：
+Server 模块是 ACI 的对外接口层：
 
 ```mermaid
 graph TB
@@ -234,7 +234,7 @@ SignalR Hub 提供实时双向通信，用于推送窗口变更通知。
 ### 4.2 Hub 定义
 
 ```csharp
-public class ContextUIHub : Hub
+public class ACIHub : Hub
 {
     // 客户端加入会话
     public Task JoinSession(string sessionId);
@@ -258,7 +258,7 @@ public class ContextUIHub : Hub
 ### 4.4 通知器接口
 
 ```csharp
-public interface IContextUIHubNotifier
+public interface IACIHubNotifier
 {
     Task NotifyWindowCreated(string sessionId, Window window);
     Task NotifyWindowUpdated(string sessionId, Window window);
@@ -271,7 +271,7 @@ public interface IContextUIHubNotifier
 ```javascript
 // 连接 Hub
 const connection = new signalR.HubConnectionBuilder()
-    .withUrl("/hubs/contextui")
+    .withUrl("/hubs/ACI")
     .build();
 
 // 监听窗口创建
@@ -316,7 +316,7 @@ builder.Services.AddSingleton<ISessionManager>(sp => {
 });
 
 // Hub 通知器
-builder.Services.AddSingleton<IContextUIHubNotifier, ContextUIHubNotifier>();
+builder.Services.AddSingleton<IACIHubNotifier, ACIHubNotifier>();
 
 // Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -408,14 +408,14 @@ public class ActionInfo
 ## 8. 目录结构
 
 ```
-ContextUI.Server/
+ACI.Server/
 ├── Endpoints/
 │   ├── SessionEndpoints.cs
 │   ├── InteractionEndpoints.cs
 │   └── WindowEndpoints.cs
 │
 ├── Hubs/
-│   └── ContextUIHub.cs
+│   └── ACIHub.cs
 │
 ├── Services/
 │   ├── SessionContext.cs

@@ -1,6 +1,6 @@
 # Core 模块详解
 
-> Core 模块提供 ContextUI 的基础设施，包括窗口管理、上下文管理、事件总线和逻辑时钟。
+> Core 模块提供 ACI 的基础设施，包括窗口管理、上下文管理、事件总线和逻辑时钟。
 
 ## 1. 模块概述
 
@@ -299,7 +299,7 @@ classDiagram
 ## 7. 目录结构
 
 ```
-ContextUI.Core/
+ACI.Core/
 ├── Abstractions/
 │   ├── ISeqClock.cs
 │   ├── IEventBus.cs

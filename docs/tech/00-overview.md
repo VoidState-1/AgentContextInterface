@@ -1,16 +1,16 @@
-# ContextUI 系统架构总览
+# ACI 系统架构总览
 
-> 本文档描述 ContextUI 后端系统的整体架构设计。
+> 本文档描述 ACI 后端系统的整体架构设计。
 
 ## 1. 系统简介
 
-ContextUI 是一个基于**窗口式交互**的 AI 应用框架。它将传统的 AI 对话转换为可操作的 UI 窗口，让 AI 能够通过结构化的操作与用户协作完成任务。
+ACI 是一个基于**窗口式交互**的 AI 应用框架。它将传统的 AI 对话转换为可操作的 UI 窗口，让 AI 能够通过结构化的操作与用户协作完成任务。
 
 ### 核心理念
 
 ```
 传统对话模式：  User → AI → Text Response
-ContextUI：     User → AI → Window Operations → Structured Feedback
+ACI：     User → AI → Window Operations → Structured Feedback
 ```
 
 ## 2. 架构分层
@@ -69,7 +69,7 @@ graph TB
 
 ### 4.1 窗口（Window）
 
-窗口是 ContextUI 的核心交互单元。每个窗口包含：
+窗口是 ACI 的核心交互单元。每个窗口包含：
 
 - **描述（Description）**：告诉 AI 这是什么、怎么操作
 - **内容（Content）**：当前状态的结构化展示
@@ -172,21 +172,21 @@ sequenceDiagram
 ```
 backend.v2/
 ├── src/
-│   ├── ContextUI.Core/           # 核心基础设施
+│   ├── ACI.Core/           # 核心基础设施
 │   │   ├── Abstractions/         # 接口定义
 │   │   ├── Models/               # 数据模型
 │   │   └── Services/             # 服务实现
 │   │
-│   ├── ContextUI.Framework/      # 应用框架
+│   ├── ACI.Framework/      # 应用框架
 │   │   ├── Runtime/              # 运行时组件
 │   │   ├── Components/           # UI 组件
 │   │   └── BuiltIn/              # 内置应用
 │   │
-│   ├── ContextUI.LLM/            # LLM 集成
+│   ├── ACI.LLM/            # LLM 集成
 │   │   ├── Abstractions/         # 接口定义
 │   │   └── Services/             # 服务实现
 │   │
-│   └── ContextUI.Server/         # HTTP 服务
+│   └── ACI.Server/         # HTTP 服务
 │       ├── Endpoints/            # API 端点
 │       ├── Hubs/                 # SignalR Hub
 │       ├── Services/             # 服务层
