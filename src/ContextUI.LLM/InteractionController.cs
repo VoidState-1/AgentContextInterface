@@ -97,6 +97,36 @@ public class InteractionController
     }
 
     /// <summary>
+    /// 调试入口：直接处理 AI 输出（不调用 LLM）
+    /// </summary>
+    public async Task<InteractionResult> ProcessAssistantOutputAsync(
+        string assistantOutput,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        EnsureInitialized();
+
+        _contextManager.Add(new ContextItem
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = ContextItemType.Assistant,
+            Content = assistantOutput
+        });
+
+        var action = ActionParser.Parse(assistantOutput);
+        ActionResult? actionResult = null;
+        if (action != null)
+        {
+            actionResult = await ExecuteActionAsync(action);
+        }
+
+        _contextManager.Prune(_maxContextItems);
+
+        return InteractionResult.Ok(assistantOutput, action, actionResult);
+    }
+
+    /// <summary>
     /// 执行解析后的操作
     /// </summary>
     private async Task<ActionResult> ExecuteActionAsync(ParsedAction action)

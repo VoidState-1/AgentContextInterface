@@ -9,6 +9,14 @@ public class MessageRequest
 }
 
 /// <summary>
+/// 手动模拟 AI 输出请求
+/// </summary>
+public class SimulateRequest
+{
+    public required string AssistantOutput { get; set; }
+}
+
+/// <summary>
 /// 交互响应
 /// </summary>
 public class InteractionResponse
