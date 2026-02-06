@@ -1,4 +1,4 @@
-# ACI
+# Agent Context Interface (ACI)
 
 > 就像 GUI 让人类摆脱了命令行，ACI 让 AI 摆脱了复杂抽象的 MCP 接口
 
@@ -24,20 +24,45 @@
 
 ## 🤔 这是什么？
 
-传统的 MCP（Model Context Protocol）为 AI 提供了与外部工具交互的能力，但这些交互本质上是**抽象的函数调用**——AI 调用一个接口，获得一个结果，然后继续对话。这种模式存在明显的局限性：
+**Agent Context Interface (ACI)** 是一种**基于窗口的 AI 交互协议**，旨在解决传统对话式 AI 和 MCP 接口的局限性。
+曾用名：ContextUI
+
+在这个项目的开发过程中，我们吸取了大量前人的经验教训，如MCP，Skills等
+ACI的出现不是为了取代它们，而是为了提供一种更直观、更灵活的 AI 交互方式，将Agent的能力推向更广阔的领域。
+
+传统的 MCP（Model Context Protocol）为 AI 提供了与外部工具交互的能力。
+但这些交互本质上是**抽象的函数调用**——AI 调用一个接口，获得一个结果，然后继续对话。
+这种模式存在明显的局限性：
 
 - 每次调用都是**孤立的**，缺乏持续的状态管理
 - 返回的结果是**静态的**，无法反映后续的变化
 - 复杂操作需要通过**大量的上下文描述**来传递状态，容易导致 Token 爆炸
 
-**ACI 的解决思路很简单：给 AI 一个"眼睛"。**
+**ACI 的解决思路很简单：为AI提供可以动态更新的窗口。**
 
-我们将 AI 操作的对象从抽象的接口**具象化为窗口**。窗口是一个熟悉的隐喻——它有内容、有状态、有边界、有可执行的操作。AI 可以"看到"窗口的当前状态，并通过操作来改变它。
+窗口是一个熟悉的隐喻——它有内容、有状态、有边界、有可执行的操作。
+在ACI中，窗口是一段XML文本，它可以被修改，被更新。
+AI 可以"看到"窗口的当前状态，并通过操作来改变它。
 
+以下是一个标准窗口的示例：
+
+```xml
+<Window id="todo_12345">
+  <Description>待办事项管理应用</Description>
+  <Content>
+    item-1：买菜
+    item-2：写代码
+  </Content>
+  <Actions>
+    <action id="add" params="text:string">添加条目</action>
+    <action id="delete" params="index:int">删除条目</action>
+    <action id="close" params="summary:string?">关闭</action>
+  </Actions>
+</Window>
 ```
-传统 MCP：   AI 调用工具 → 获得结果文本 → 结果消失在对话历史中
-ACI： AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作窗口
-```
+
+传统 MCP：   AI 调用工具 → 获得结果文本 → 结果淹没在对话历史中
+ACI     ：   AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作窗口
 
 这种转变听起来很小，但它打开了一扇通往更复杂 AI 交互的大门。
 
@@ -87,6 +112,9 @@ ACI： AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作
 └─────────────────────────────────────────┘
 ```
 
+当然，这张图片并不精确，在ACI中，窗口是动态更新的，AI每次响应时看到的窗口状态都有可能不一样。
+也就是说，实际上并不会产生两个窗口，而是同一个窗口的不同状态。我们很难用图片描述这一点。
+
 ---
 
 ## 🎯 核心优势
@@ -113,6 +141,7 @@ ACI： AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作
 ### 3. 可关闭与可压缩
 
 担心 Token 爆炸？在 ACI 中，窗口可以被**关闭**。关闭时，你可以提供一个摘要，将窗口的完整状态压缩为几句话。
+与此同时，ACI还有着非常智能的上下文管理机制，垃圾内容会被优先清理。
 
 这意味着：
 
@@ -170,8 +199,8 @@ ACI： AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/context-ui.git
-cd context-ui
+git clone https://github.com/your-repo/AgentContextInterface.git
+cd AgentContextInterface
 
 # 配置 API Key
 # 编辑 src/ACI.Server/appsettings.json
