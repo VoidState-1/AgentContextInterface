@@ -92,6 +92,9 @@ public class SessionContext : IDisposable
 
         // 注册活动日志
         Host.Register(new Framework.BuiltIn.ActivityLog(maxLogs));
+
+        // 注册文件浏览器
+        Host.Register(new Framework.BuiltIn.FileExplorerApp());
     }
 
     public async Task<T> RunSerializedAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
