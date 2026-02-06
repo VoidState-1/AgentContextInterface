@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using ContextUI.Core.Abstractions;
 using ContextUI.LLM.Abstractions;
+using ContextUI.Server.Hubs;
 
 namespace ContextUI.Server.Services;
 
@@ -54,14 +56,20 @@ public enum SessionChangeType
 public class SessionManager : ISessionManager
 {
     private readonly ConcurrentDictionary<string, SessionContext> _sessions = new();
+    private readonly ConcurrentDictionary<string, Action<WindowChangedEvent>> _windowHandlers = new();
     private readonly ILLMBridge _llmBridge;
+    private readonly IContextUIHubNotifier _hubNotifier;
     private readonly Action<Framework.Runtime.FrameworkHost>? _configureApps;
 
     public event Action<SessionChangeEvent>? OnSessionChange;
 
-    public SessionManager(ILLMBridge llmBridge, Action<Framework.Runtime.FrameworkHost>? configureApps = null)
+    public SessionManager(
+        ILLMBridge llmBridge,
+        IContextUIHubNotifier hubNotifier,
+        Action<Framework.Runtime.FrameworkHost>? configureApps = null)
     {
         _llmBridge = llmBridge;
+        _hubNotifier = hubNotifier;
         _configureApps = configureApps;
     }
 
@@ -71,6 +79,7 @@ public class SessionManager : ISessionManager
 
         var context = new SessionContext(sessionId, _llmBridge, _configureApps);
         _sessions[sessionId] = context;
+        BindWindowNotifications(context);
 
         OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Created));
 
@@ -86,6 +95,7 @@ public class SessionManager : ISessionManager
     {
         if (_sessions.TryRemove(sessionId, out var context))
         {
+            UnbindWindowNotifications(context);
             context.Dispose();
             OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Closed));
         }
@@ -94,5 +104,47 @@ public class SessionManager : ISessionManager
     public IEnumerable<string> GetActiveSessions()
     {
         return _sessions.Keys;
+    }
+
+    private void BindWindowNotifications(SessionContext context)
+    {
+        Action<WindowChangedEvent> handler = evt => _ = NotifyWindowChangeAsync(context.SessionId, evt);
+        context.Windows.OnChanged += handler;
+        _windowHandlers[context.SessionId] = handler;
+    }
+
+    private void UnbindWindowNotifications(SessionContext context)
+    {
+        if (_windowHandlers.TryRemove(context.SessionId, out var handler))
+        {
+            context.Windows.OnChanged -= handler;
+        }
+    }
+
+    private async Task NotifyWindowChangeAsync(string sessionId, WindowChangedEvent evt)
+    {
+        try
+        {
+            if (evt.Type == WindowEventType.Created && evt.Window != null)
+            {
+                await _hubNotifier.NotifyWindowCreated(sessionId, evt.Window);
+                return;
+            }
+
+            if (evt.Type == WindowEventType.Updated && evt.Window != null)
+            {
+                await _hubNotifier.NotifyWindowUpdated(sessionId, evt.Window);
+                return;
+            }
+
+            if (evt.Type == WindowEventType.Removed)
+            {
+                await _hubNotifier.NotifyWindowClosed(sessionId, evt.WindowId);
+            }
+        }
+        catch
+        {
+            // 保持会话逻辑健壮，忽略通知失败
+        }
     }
 }

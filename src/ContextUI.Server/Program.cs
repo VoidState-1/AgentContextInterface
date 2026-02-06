@@ -28,13 +28,27 @@ builder.Services.Configure<OpenRouterConfig>(
     builder.Configuration.GetSection(OpenRouterConfig.SectionName));
 
 // HTTP Client
-builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>();
+builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>((sp, client) =>
+{
+    var config = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OpenRouterConfig>>().Value;
+
+    if (!string.IsNullOrWhiteSpace(config.BaseUrl))
+    {
+        client.BaseAddress = new Uri(config.BaseUrl);
+    }
+
+    if (config.TimeoutSeconds > 0)
+    {
+        client.Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds);
+    }
+});
 
 // 会话管理器（单例）
 builder.Services.AddSingleton<ISessionManager>(sp =>
 {
     var llmBridge = sp.GetRequiredService<ILLMBridge>();
-    return new SessionManager(llmBridge);
+    var hubNotifier = sp.GetRequiredService<IContextUIHubNotifier>();
+    return new SessionManager(llmBridge, hubNotifier);
 });
 
 // Hub 通知器

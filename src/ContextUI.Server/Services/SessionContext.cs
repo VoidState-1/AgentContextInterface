@@ -1,8 +1,10 @@
 using ContextUI.Core.Abstractions;
+using ContextUI.Core.Models;
 using ContextUI.Core.Services;
 using ContextUI.Framework.Runtime;
 using ContextUI.LLM;
 using ContextUI.LLM.Abstractions;
+using System.Threading;
 
 namespace ContextUI.Server.Services;
 
@@ -26,8 +28,10 @@ public class SessionContext : IDisposable
 
     // LLM 服务
     public InteractionController Interaction { get; }
+    public ActionExecutor ActionExecutor { get; }
 
     private bool _disposed;
+    private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
     public SessionContext(
         string sessionId,
@@ -42,10 +46,12 @@ public class SessionContext : IDisposable
         Events = new EventBus();
         Windows = new WindowManager(Clock);
         Context = new ContextManager(Clock);
+        Windows.OnChanged += OnWindowChanged;
 
         // 创建 Framework 服务
         Runtime = new RuntimeContext(Windows, Events, Clock, Context);
         Host = new FrameworkHost(Runtime);
+        ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
         // 注册内置应用
         RegisterBuiltInApps();
@@ -58,7 +64,8 @@ public class SessionContext : IDisposable
             llmBridge,
             Host,
             Context,
-            Windows
+            Windows,
+            ActionExecutor
         );
     }
 
@@ -74,10 +81,56 @@ public class SessionContext : IDisposable
         Host.Register(new Framework.BuiltIn.ActivityLog());
     }
 
+    public async Task<T> RunSerializedAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
+    {
+        await _sessionLock.WaitAsync(ct);
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            _sessionLock.Release();
+        }
+    }
+
+    private void OnWindowChanged(WindowChangedEvent evt)
+    {
+        if (evt.Type == WindowEventType.Created)
+        {
+            Context.Add(new ContextItem
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = ContextItemType.Window,
+                Content = evt.WindowId
+            });
+            return;
+        }
+
+        if (evt.Type == WindowEventType.Removed)
+        {
+            Context.MarkWindowObsolete(evt.WindowId);
+            return;
+        }
+
+        if (evt.Type == WindowEventType.Updated &&
+            evt.Window?.Options.RefreshMode == RefreshMode.Append)
+        {
+            Context.Add(new ContextItem
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = ContextItemType.Window,
+                Content = evt.WindowId
+            });
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        Windows.OnChanged -= OnWindowChanged;
+        _sessionLock.Dispose();
 
         // 清理资源
         GC.SuppressFinalize(this);

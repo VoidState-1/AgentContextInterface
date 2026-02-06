@@ -1,5 +1,4 @@
 using ContextUI.Server.Dto;
-using ContextUI.Server.Hubs;
 using ContextUI.Server.Services;
 
 namespace ContextUI.Server.Endpoints;
@@ -19,7 +18,6 @@ public static class InteractionEndpoints
             string sessionId,
             MessageRequest request,
             ISessionManager sessionManager,
-            IContextUIHubNotifier hubNotifier,
             CancellationToken ct) =>
         {
             // 验证会话
@@ -36,7 +34,9 @@ public static class InteractionEndpoints
             }
 
             // 处理请求
-            var result = await session.Interaction.ProcessAsync(request.Message, ct);
+            var result = await session.RunSerializedAsync(
+                () => session.Interaction.ProcessAsync(request.Message, ct),
+                ct);
 
             if (!result.Success)
             {

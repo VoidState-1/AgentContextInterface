@@ -14,6 +14,8 @@ public class ActivityLog : ContextApp
 {
     private readonly List<LogItem> _logs = [];
     private int _windowCounter = 0;
+    private IDisposable? _actionSub;
+    private IDisposable? _appSub;
 
     public override string Name => "activity_log";
 
@@ -21,11 +23,25 @@ public class ActivityLog : ContextApp
 
     public override void OnCreate()
     {
+        if (_actionSub != null || _appSub != null)
+        {
+            return;
+        }
+
         // 订阅操作执行事件
-        Context.Events.Subscribe<ActionExecutedEvent>(OnActionExecuted);
+        _actionSub = Context.Events.Subscribe<ActionExecutedEvent>(OnActionExecuted);
 
         // 订阅应用创建事件
-        Context.Events.Subscribe<AppCreatedEvent>(OnAppCreated);
+        _appSub = Context.Events.Subscribe<AppCreatedEvent>(OnAppCreated);
+    }
+
+    public override void OnDestroy()
+    {
+        _actionSub?.Dispose();
+        _actionSub = null;
+
+        _appSub?.Dispose();
+        _appSub = null;
     }
 
     private void OnActionExecuted(ActionExecutedEvent evt)

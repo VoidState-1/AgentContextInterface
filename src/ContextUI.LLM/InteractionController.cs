@@ -4,6 +4,7 @@ using ContextUI.Core.Services;
 using ContextUI.Framework.Runtime;
 using ContextUI.LLM.Abstractions;
 using ContextUI.LLM.Services;
+using System.Text.Json;
 
 namespace ContextUI.LLM;
 
@@ -16,6 +17,7 @@ public class InteractionController
     private readonly FrameworkHost _host;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
+    private readonly ActionExecutor _actionExecutor;
     private readonly IContextRenderer _renderer;
     private readonly RenderOptions _renderOptions;
 
@@ -26,6 +28,7 @@ public class InteractionController
         FrameworkHost host,
         IContextManager contextManager,
         IWindowManager windowManager,
+        ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
         RenderOptions? renderOptions = null)
     {
@@ -33,6 +36,7 @@ public class InteractionController
         _host = host;
         _contextManager = contextManager;
         _windowManager = windowManager;
+        _actionExecutor = actionExecutor;
         _renderer = renderer ?? new ContextRenderer();
         _renderOptions = renderOptions ?? new RenderOptions();
     }
@@ -84,6 +88,8 @@ public class InteractionController
             actionResult = await ExecuteActionAsync(action);
         }
 
+        _contextManager.Prune();
+
         return InteractionResult.Ok(responseContent, action, actionResult, llmResponse.Usage);
     }
 
@@ -116,18 +122,10 @@ public class InteractionController
             // 如果没有指定应用名，打开应用启动器
             if (string.IsNullOrEmpty(appName))
             {
-                appName = "app_launcher";
+                appName = "launcher";
             }
 
-            var window = _host.Launch(appName, action.Target);
-
-            // 添加窗口到上下文
-            _contextManager.Add(new ContextItem
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Type = ContextItemType.Window,
-                Content = window.Id
-            });
+            _host.Launch(appName, action.Target);
 
             return Task.FromResult(ActionResult.Ok($"已打开应用: {appName}"));
         }
@@ -147,49 +145,113 @@ public class InteractionController
             return ActionResult.Fail("操作缺少必要参数");
         }
 
-        var window = _windowManager.Get(action.WindowId);
-        if (window == null)
+        return await ExecuteWindowActionAsync(action.WindowId, action.ActionId, action.Parameters);
+    }
+
+    /// <summary>
+    /// 执行窗口操作（供 API 端点复用）
+    /// </summary>
+    public async Task<ActionResult> ExecuteWindowActionAsync(
+        string windowId,
+        string actionId,
+        Dictionary<string, object>? parameters = null)
+    {
+        if (string.IsNullOrWhiteSpace(windowId) || string.IsNullOrWhiteSpace(actionId))
         {
-            return ActionResult.Fail($"窗口不存在: {action.WindowId}");
+            return ActionResult.Fail("操作缺少必要参数");
         }
 
-        // 处理关闭操作
-        if (action.ActionId == "close")
+        var result = await _actionExecutor.ExecuteAsync(windowId, actionId, parameters);
+
+        if (!result.Success)
         {
-            _windowManager.Remove(action.WindowId);
-            _contextManager.MarkWindowObsolete(action.WindowId);
-            return ActionResult.Close(action.Parameters?.GetValueOrDefault("summary")?.ToString());
+            return result;
         }
 
-        // 执行窗口操作
-        if (window.Handler == null)
+        if (!TryExtractLaunchCommand(result.Data, out var appName, out var target, out var closeSource))
         {
-            return ActionResult.Fail("窗口不支持操作");
+            _contextManager.Prune();
+            return result;
         }
 
-        var context = new ActionContext
+        if (string.IsNullOrWhiteSpace(appName))
         {
-            Window = window,
-            ActionId = action.ActionId,
-            Parameters = action.Parameters
-        };
-
-        var result = await window.Handler.ExecuteAsync(context);
-
-        // 如果操作结果要求刷新窗口
-        if (result.ShouldRefresh)
-        {
-            _host.RefreshWindow(action.WindowId);
+            return ActionResult.Fail("启动命令缺少应用名称");
         }
 
-        // 如果操作结果要求关闭窗口
-        if (result.ShouldClose)
+        try
         {
-            _windowManager.Remove(action.WindowId);
-            _contextManager.MarkWindowObsolete(action.WindowId);
+            _host.Launch(appName, target);
+
+            if (closeSource)
+            {
+                await _actionExecutor.ExecuteAsync(
+                    windowId,
+                    "close",
+                    new Dictionary<string, object>
+                    {
+                        ["summary"] = $"已从窗口 {windowId} 打开应用 {appName}"
+                    });
+            }
+
+            _contextManager.Prune();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return ActionResult.Fail($"打开应用失败: {ex.Message}");
+        }
+    }
+
+    private static bool TryExtractLaunchCommand(
+        object? data,
+        out string? appName,
+        out string? target,
+        out bool closeSource)
+    {
+        appName = null;
+        target = null;
+        closeSource = false;
+
+        if (data == null)
+        {
+            return false;
         }
 
-        return result;
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(data));
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("action", out var actionElement) ||
+                actionElement.ValueKind != JsonValueKind.String ||
+                !string.Equals(actionElement.GetString(), "launch", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (root.TryGetProperty("app", out var appElement) && appElement.ValueKind == JsonValueKind.String)
+            {
+                appName = appElement.GetString();
+            }
+
+            if (root.TryGetProperty("target", out var targetElement) && targetElement.ValueKind == JsonValueKind.String)
+            {
+                target = targetElement.GetString();
+            }
+
+            if (root.TryGetProperty("close_source", out var closeElement) &&
+                (closeElement.ValueKind == JsonValueKind.True || closeElement.ValueKind == JsonValueKind.False))
+            {
+                closeSource = closeElement.GetBoolean();
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

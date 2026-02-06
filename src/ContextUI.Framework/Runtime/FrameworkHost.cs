@@ -141,6 +141,11 @@ public class FrameworkHost
         // 更新 Handler
         window.Handler = new ContextActionHandler(newDefinition.Actions);
 
+        if (_windows is WindowManager wm)
+        {
+            wm.NotifyUpdated(windowId);
+        }
+
         // 发布窗口更新事件
         _events.Publish(new WindowRefreshedEvent(
             Seq: window.Meta.UpdatedAt,

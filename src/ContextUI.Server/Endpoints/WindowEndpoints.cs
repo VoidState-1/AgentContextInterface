@@ -1,4 +1,3 @@
-using ContextUI.Core.Abstractions;
 using ContextUI.Server.Services;
 
 namespace ContextUI.Server.Endpoints;
@@ -26,7 +25,7 @@ public static class WindowEndpoints
                 .Select(w => new
                 {
                     w.Id,
-                    w.Description,
+                    Description = w.Description?.Render(),
                     Content = w.Render(),
                     w.AppName,
                     w.Meta.CreatedAt,
@@ -54,7 +53,7 @@ public static class WindowEndpoints
             return Results.Ok(new
             {
                 window.Id,
-                window.Description,
+                Description = window.Description?.Render(),
                 Content = window.Render(),
                 window.AppName,
                 window.Meta.CreatedAt,
@@ -73,7 +72,8 @@ public static class WindowEndpoints
             string windowId,
             string actionId,
             ActionRequest? request,
-            ISessionManager sessionManager) =>
+            ISessionManager sessionManager,
+            CancellationToken ct) =>
         {
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
@@ -81,46 +81,9 @@ public static class WindowEndpoints
                 return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
             }
 
-            var window = session.Windows.Get(windowId);
-            if (window == null)
-            {
-                return Results.NotFound(new { Error = $"窗口不存在: {windowId}" });
-            }
-
-            // 处理关闭操作
-            if (actionId == "close")
-            {
-                session.Windows.Remove(windowId);
-                session.Context.MarkWindowObsolete(windowId);
-                return Results.Ok(new { Success = true, Message = "窗口已关闭" });
-            }
-
-            if (window.Handler == null)
-            {
-                return Results.BadRequest(new { Error = "窗口不支持操作" });
-            }
-
-            var context = new ActionContext
-            {
-                Window = window,
-                ActionId = actionId,
-                Parameters = request?.Params
-            };
-
-            var result = await window.Handler.ExecuteAsync(context);
-
-            // 如果需要刷新
-            if (result.ShouldRefresh)
-            {
-                session.Host.RefreshWindow(windowId);
-            }
-
-            // 如果需要关闭
-            if (result.ShouldClose)
-            {
-                session.Windows.Remove(windowId);
-                session.Context.MarkWindowObsolete(windowId);
-            }
+            var result = await session.RunSerializedAsync(
+                () => session.Interaction.ExecuteWindowActionAsync(windowId, actionId, request?.Params),
+                ct);
 
             return Results.Ok(new
             {

@@ -46,8 +46,8 @@ public class AppLauncher : ContextApp
                         // 返回数据，让调用方处理启动逻辑
                         return ActionResult.Ok(
                             summary: $"打开应用 {appName}",
-                            shouldClose: true,
-                            data: new { action = "launch", app = appName }
+                            shouldClose: false,
+                            data: new { action = "launch", app = appName, close_source = true }
                         );
                     }
                 }.WithParam("app", ParamType.String),

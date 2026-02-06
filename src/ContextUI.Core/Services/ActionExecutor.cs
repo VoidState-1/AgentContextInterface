@@ -11,12 +11,18 @@ public class ActionExecutor
     private readonly IWindowManager _windows;
     private readonly ISeqClock _clock;
     private readonly IEventBus _events;
+    private readonly Action<string>? _refreshWindow;
 
-    public ActionExecutor(IWindowManager windows, ISeqClock clock, IEventBus events)
+    public ActionExecutor(
+        IWindowManager windows,
+        ISeqClock clock,
+        IEventBus events,
+        Action<string>? refreshWindow = null)
     {
         _windows = windows;
         _clock = clock;
         _events = events;
+        _refreshWindow = refreshWindow;
     }
 
     /// <summary>
@@ -32,6 +38,30 @@ public class ActionExecutor
         if (window == null)
         {
             return ActionResult.Fail($"窗口 '{windowId}' 不存在");
+        }
+
+        // close 是系统保留操作，允许窗口不显式声明
+        if (actionId == "close")
+        {
+            var seq1 = _clock.Next();
+            var summary = parameters?.TryGetValue("summary", out var summaryObj) == true
+                ? summaryObj?.ToString()
+                : null;
+
+            _windows.Remove(windowId);
+
+            var closeResult = ActionResult.Close(summary);
+            closeResult.LogSeq = seq1;
+
+            _events.Publish(new ActionExecutedEvent(
+                Seq: seq1,
+                WindowId: windowId,
+                ActionId: actionId,
+                Success: true,
+                Summary: summary
+            ));
+
+            return closeResult;
         }
 
         // 2. 获取操作定义
@@ -85,9 +115,16 @@ public class ActionExecutor
         {
             _windows.Remove(windowId);
         }
-        else if (result.ShouldRefresh && _windows is WindowManager wm)
+        else if (result.ShouldRefresh)
         {
-            wm.NotifyUpdated(windowId);
+            if (_refreshWindow != null)
+            {
+                _refreshWindow(windowId);
+            }
+            else if (_windows is WindowManager wm)
+            {
+                wm.NotifyUpdated(windowId);
+            }
         }
 
         return result;

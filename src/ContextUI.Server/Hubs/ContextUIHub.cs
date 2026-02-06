@@ -74,7 +74,7 @@ public class ContextUIHubNotifier : IContextUIHubNotifier
         await _hubContext.Clients.Group(sessionId).SendAsync("WindowCreated", new
         {
             window.Id,
-            window.Description,
+            Description = window.Description?.Render(),
             Content = window.Render(),
             window.AppName,
             CreatedAt = window.Meta.CreatedAt,
@@ -87,7 +87,7 @@ public class ContextUIHubNotifier : IContextUIHubNotifier
         await _hubContext.Clients.Group(sessionId).SendAsync("WindowUpdated", new
         {
             window.Id,
-            window.Description,
+            Description = window.Description?.Render(),
             Content = window.Render(),
             UpdatedAt = window.Meta.UpdatedAt
         });
