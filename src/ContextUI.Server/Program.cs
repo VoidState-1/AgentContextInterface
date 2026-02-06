@@ -39,7 +39,10 @@ builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>((sp, client) =>
 
     if (!string.IsNullOrWhiteSpace(config.BaseUrl))
     {
-        client.BaseAddress = new Uri(config.BaseUrl);
+        // Ensure trailing slash so relative paths like "chat/completions" append correctly.
+        // Without it, "https://.../api/v1" + "chat/completions" becomes ".../api/chat/completions".
+        var baseUrl = config.BaseUrl.TrimEnd('/') + "/";
+        client.BaseAddress = new Uri(baseUrl);
     }
 
     if (config.TimeoutSeconds > 0)

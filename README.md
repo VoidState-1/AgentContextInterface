@@ -1,6 +1,6 @@
 # ContextUI
 
-> 让 AI 不只是对话，而是真正地操作
+> 就像 GUI 让人类摆脱了命令行，ContextUI 让 AI 摆脱了复杂抽象的 MCP 接口
 
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet" alt=".NET 10.0">
@@ -8,27 +8,51 @@
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License">
 </p>
 
+---
+
+## ⚠️ 免责声明
+
+> **这是一个早期实验性版本！**
+>
+> 当前版本仅用于概念验证和技术探索。我们**不保证** API 的稳定性，未来可能会进行**大规模架构重构**。
+>
+> **请勿将本项目用于生产环境。**
+>
+> 如果您对这个项目感兴趣，欢迎参与讨论和贡献，但请做好随时适应变化的准备。
+
+---
+
 ## 🤔 这是什么？
 
-**ContextUI** 是一个实验性框架，探索 AI 交互的新范式：
+传统的 MCP（Model Context Protocol）为 AI 提供了与外部工具交互的能力，但这些交互本质上是**抽象的函数调用**——AI 调用一个接口，获得一个结果，然后继续对话。这种模式存在明显的局限性：
+
+- 每次调用都是**孤立的**，缺乏持续的状态管理
+- 返回的结果是**静态的**，无法反映后续的变化
+- 复杂操作需要通过**大量的上下文描述**来传递状态，容易导致 Token 爆炸
+
+**ContextUI 的解决思路很简单：给 AI 一个"眼睛"。**
+
+我们将 AI 操作的对象从抽象的接口**具象化为窗口**。窗口是一个熟悉的隐喻——它有内容、有状态、有边界、有可执行的操作。AI 可以"看到"窗口的当前状态，并通过操作来改变它。
 
 ```
-传统 AI：  用户提问 → AI 回复文字 → 用户自己去执行
-ContextUI：用户提问 → AI 操作窗口 → 用户看到结果
+传统 MCP：   AI 调用工具 → 获得结果文本 → 结果消失在对话历史中
+ContextUI： AI 打开窗口 → 窗口持续存在 → AI 可以随时查看和操作窗口
 ```
 
-我们相信，未来的 AI 助手不应该只是一个聊天机器人，而应该像一个真正的助手一样，能够直接操作工具、管理任务、执行动作。
+这种转变听起来很小，但它打开了一扇通往更复杂 AI 交互的大门。
 
-## ✨ 核心理念
+---
 
-### 窗口式交互
+## ✨ 核心理念：窗口式交互
 
-传统对话式 AI 的问题：
+### 传统对话式 AI 的问题
+
 - 信息转瞬即逝，对话越长越容易丢失上下文
 - AI 只能输出文字，用户需要自己理解并执行
 - 每次对话都是从头开始，没有持久状态
 
-ContextUI 的解决方案：
+### ContextUI 的解决方案
+
 - **窗口**：信息被组织在可操作的窗口中，而非消失的聊天记录
 - **操作**：AI 可以直接执行动作，而非只是告诉你怎么做
 - **状态**：窗口保持持久状态，AI 可以继续之前的工作
@@ -63,55 +87,97 @@ ContextUI 的解决方案：
 └─────────────────────────────────────────┘
 ```
 
-## 🏗️ 架构概览
+---
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                      Server 模块                         │
-│  REST API  +  SignalR Hub  +  Session Management         │
-└────────────────────────┬─────────────────────────────────┘
-                         │
-┌────────────────────────┴─────────────────────────────────┐
-│                       LLM 模块                           │
-│  OpenRouter Client  +  Action Parser  +  Interaction     │
-└────────────────────────┬─────────────────────────────────┘
-                         │
-┌────────────────────────┴─────────────────────────────────┐
-│                    Framework 模块                        │
-│  FrameworkHost  +  ContextApp  +  Built-in Apps          │
-└────────────────────────┬─────────────────────────────────┘
-                         │
-┌────────────────────────┴─────────────────────────────────┐
-│                      Core 模块                           │
-│  WindowManager  +  ContextManager  +  EventBus  +  Clock │
-└──────────────────────────────────────────────────────────┘
-```
+## 🎯 核心优势
 
-| 模块 | 职责 |
-|------|------|
-| **Core** | 基础设施：窗口管理、上下文管理、事件总线、逻辑时钟 |
-| **Framework** | 应用框架：应用生命周期、窗口创建、操作执行 |
-| **LLM** | AI 集成：LLM 调用、响应解析、交互控制 |
-| **Server** | HTTP 服务：REST API、SignalR、会话管理 |
+### 1. 减少上下文污染
+
+在传统 MCP 中，工具的返回结果会被追加到对话历史中，且**永远不会更新**。这意味着：
+
+- 如果你查询了一个列表，后续对列表的修改不会反映在之前的查询结果中
+- 对话越长，过时的信息越多，AI 越容易产生混淆
+
+**ContextUI 的窗口是动态的。** 窗口的内容会随着操作实时更新，AI 在每次响应时都能看到最新的状态，而不是某个历史快照。
+
+### 2. 持有状态
+
+传统的工具调用是**无状态的**——每次调用都是独立的。如果你需要跨多次调用保持状态，就必须在每次调用时传递完整的上下文。
+
+**ContextUI 的窗口天然拥有状态。** 应用可以在窗口中维护自己的数据，AI 的每次操作不再是孤立的：
+
+- 上一个操作的结果可以影响下一个操作的选项
+- 复杂的多步骤工作流成为可能
+- AI 可以在任务中途暂停，之后继续
+
+### 3. 可关闭与可压缩
+
+担心 Token 爆炸？在 ContextUI 中，窗口可以被**关闭**。关闭时，你可以提供一个摘要，将窗口的完整状态压缩为几句话。
+
+这意味着：
+
+- 你可以编写非常详细的窗口描述和操作指南，而不必担心 Token 消耗
+- 任务完成后，复杂的窗口状态可以被压缩为简洁的结论
+- 上下文始终保持精简和相关
+
+---
+
+## 🔮 未来的可能
+
+我们认为，ContextUI 最大的潜力在于**对现有程序的映射**。
+
+想象一下：
+
+- 将 Excel 映射为一个 ContextUI 窗口，AI 可以直接操作表格
+- 将浏览器映射为窗口，AI 可以导航网页、填写表单
+- 将 IDE 映射为窗口，AI 可以编辑代码、运行测试
+- 将任何桌面软件映射为窗口，AI 可以像人类一样操作
+
+通过这种映射，我们可以**复用互联网和软件行业数十年积累的资产**，让 AI 不必从零开始学习每一个新领域，而是站在巨人的肩膀上。
+
+这是一个宏大的愿景，但 ContextUI 为此奠定了基础。
+
+---
+
+## ⚡ 不可忽视的挑战
+
+### 1. Token 缓存失效
+
+现代 LLM 服务通常会缓存 KV（Key-Value）来加速推理。但由于 ContextUI 中窗口的内容会动态变化，每次发送给 AI 的上下文都可能不同，这可能导致缓存命中率下降。
+
+这是一个需要上游模型厂商配合解决的问题。理想情况下，未来的 LLM 服务可以支持"部分上下文更新"，只重新计算变化的部分。
+
+### 2. 工具调用量增加
+
+相比传统 MCP 的"一次调用，一个结果"模式，ContextUI 鼓励更频繁、更细粒度的交互。这可能导致：
+
+- 完成同一任务需要更多的 LLM 调用
+- 整体响应时间变长
+- API 成本增加
+
+但我们认为，**准确性胜过速度**。如果更多的交互能够带来更精确的执行结果和更少的错误，这种权衡是值得的。
+
+---
 
 ## 🚀 快速开始
 
 ### 环境要求
 
 - .NET 10.0 SDK
-- OpenRouter API Key（或其他 LLM 提供商）
+- OpenRouter API Key（或其他兼容的 LLM 提供商）
 
 ### 运行服务
 
 ```bash
 # 克隆项目
 git clone https://github.com/your-repo/context-ui.git
-cd context-ui/backend.v2
+cd context-ui
 
 # 配置 API Key
 # 编辑 src/ContextUI.Server/appsettings.json
+# 设置 OpenRouter.ApiKey
 
-# 运行
+# 运行服务端
 dotnet run --project src/ContextUI.Server
 ```
 
@@ -130,6 +196,8 @@ curl -X POST http://localhost:5000/api/sessions/{sessionId}/interact \
 curl http://localhost:5000/api/sessions/{sessionId}/windows
 ```
 
+---
+
 ## 📱 开发应用
 
 ContextUI 允许你开发自己的"应用"——AI 可以操作的功能模块：
@@ -138,29 +206,48 @@ ContextUI 允许你开发自己的"应用"——AI 可以操作的功能模块�
 public class TodoApp : ContextApp
 {
     public override string Name => "todo";
+    public override string? AppDescription => "管理待办事项";
     
-    private List<string> _items = [];
+    private List<TodoItem> _items = [];
     
     public override ContextWindow CreateWindow(string? intent)
     {
         return new ContextWindow
         {
-            Description = new Text("待办事项列表"),
-            Content = new Column(_items.Select(i => new Text(i)).ToArray()),
+            Description = new Text("待办事项列表，支持增删改查"),
+            Content = RenderItems(),
             Actions = [
                 new("add", "添加", [new("text", "string")]),
-                new("delete", "删除", [new("index", "int")])
+                new("toggle", "切换状态", [new("id", "int")]),
+                new("delete", "删除", [new("id", "int")])
             ],
             OnAction = HandleAction
         };
     }
     
-    private Task<ActionResult> HandleAction(ActionContext ctx)
+    private async Task<ActionResult> HandleAction(ActionContext ctx)
     {
-        // 处理操作...
+        return ctx.ActionId switch
+        {
+            "add" => AddItem(ctx.GetString("text")),
+            "toggle" => ToggleItem(ctx.GetInt("id")),
+            "delete" => DeleteItem(ctx.GetInt("id")),
+            _ => ActionResult.Fail("未知操作")
+        };
     }
 }
 ```
+
+每个应用包含：
+
+- **Name**：应用标识，用于启动
+- **Description**：告诉 AI 这个应用做什么
+- **CreateWindow**：创建窗口，定义内容和可用操作
+- **OnAction**：处理 AI 的操作请求
+
+详细的开发指南请参阅 [应用开发文档](./docs/tech/08-app-development.md)。
+
+---
 
 ## 📖 文档
 
@@ -178,37 +265,53 @@ public class TodoApp : ContextApp
 | [07-api-reference.md](./docs/tech/07-api-reference.md) | API 参考手册 |
 | [08-app-development.md](./docs/tech/08-app-development.md) | 应用开发指南 |
 
-## 🎯 项目状态
+---
 
-这是一个**实验性项目**，用于探索 AI 交互的可能性。
+## 📊 项目状态
 
-### 当前进度
+这是一个**早期实验性项目**，目前已完成最基本的 MVP 版本。
 
-- [x] Core 模块：基础设施
-- [x] Framework 模块：应用框架
-- [x] LLM 模块：AI 集成
-- [x] Server 模块：HTTP 服务
-- [ ] 前端客户端
-- [ ] 更多内置应用
-- [ ] 生产环境部署
+### 已完成
 
-### 设计思考
+- [x] Core 模块：窗口管理、上下文管理、事件系统
+- [x] Framework 模块：应用生命周期、窗口创建与刷新
+- [x] LLM 模块：OpenRouter 集成、响应解析、交互控制
+- [x] Server 模块：REST API、SignalR 实时通信
 
-- **为什么是"窗口"？** 窗口是一个熟悉的隐喻，代表可交互的信息容器。它天然具有状态、边界和操作能力。
-  
-- **为什么让 AI 操作？** 减少用户的认知负担。用户只需表达意图，AI 负责执行细节。
+### 待完善
 
-- **为什么需要上下文管理？** LLM 有 Token 限制。我们需要智能地管理对话历史，确保 AI 始终拥有足够的上下文来做出正确的决策。
+- [ ] **前端客户端**：当前前端仍处于非常基础的状态，需要大幅优化用户体验
+- [ ] **异步操作支持**：目前窗口操作必须同步返回结果，AI 才能继续响应。缺少对长时间运行任务的支持
+- [ ] **更多内置应用**：需要开发更多实用的示例应用
+- [ ] **生产环境部署**：安全性、可靠性、可扩展性等方面需要加强
+
+### 已知限制
+
+- 窗口操作是同步的，无法处理需要长时间执行的任务
+- 尚未实现完善的错误恢复机制
+- 前端 UI 仅供演示，不适合实际使用
+
+---
 
 ## 🤝 贡献
 
-欢迎提出 Issue 和 PR！
+欢迎提出 Issue 和 Pull Request！
 
-如果你对这个项目感兴趣，或者有任何想法，欢迎联系我们。
+由于项目处于早期阶段，在贡献代码之前，建议先通过 Issue 与我们讨论你的想法，以避免重复工作或与未来的重构计划冲突。
+
+### 贡献方向
+
+- 🐛 Bug 修复和问题反馈
+- 📖 文档改进和翻译
+- 🎨 前端 UI/UX 设计与开发
+- 🔧 新的内置应用开发
+- 💡 架构设计讨论和建议
+
+---
 
 ## 📄 许可证
 
-MIT License
+本项目采用 [MIT License](./LICENSE) 开源。
 
 ---
 

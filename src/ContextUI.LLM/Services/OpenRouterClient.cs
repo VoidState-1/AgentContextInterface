@@ -21,7 +21,9 @@ public class OpenRouterClient : ILLMBridge
 
         if (string.IsNullOrEmpty(_httpClient.BaseAddress?.ToString()))
         {
-            _httpClient.BaseAddress = new Uri(_config.BaseUrl);
+            // 确保 BaseUrl 以 / 结尾，否则相对路径会替换最后一段而不是追加
+            var baseUrl = _config.BaseUrl.TrimEnd('/') + "/";
+            _httpClient.BaseAddress = new Uri(baseUrl);
         }
 
         if (!_httpClient.DefaultRequestHeaders.Contains("Authorization"))
@@ -83,11 +85,24 @@ public class OpenRouterClient : ILLMBridge
                     return LLMResponse.Fail($"OpenRouter API error: {response.StatusCode}, Content: {errorContent}");
                 }
 
-                var openRouterResponse = await response.Content.ReadFromJsonAsync<OpenRouterResponse>(cancellationToken: ct);
+                // 先读取原始响应内容
+                var responseContent = await response.Content.ReadAsStringAsync(ct);
+
+                OpenRouterResponse? openRouterResponse;
+                try
+                {
+                    openRouterResponse = System.Text.Json.JsonSerializer.Deserialize<OpenRouterResponse>(responseContent);
+                }
+                catch (System.Text.Json.JsonException jsonEx)
+                {
+                    // 如果 JSON 解析失败，显示原始响应内容
+                    var preview = responseContent.Length > 500 ? responseContent[..500] + "..." : responseContent;
+                    return LLMResponse.Fail($"Failed to parse API response as JSON. Raw response: {preview}");
+                }
 
                 if (openRouterResponse?.Choices == null || openRouterResponse.Choices.Length == 0)
                 {
-                    return LLMResponse.Fail("OpenRouter returned an empty response.");
+                    return LLMResponse.Fail($"OpenRouter returned an empty response. Raw: {responseContent}");
                 }
 
                 var choice = openRouterResponse.Choices[0];
