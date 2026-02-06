@@ -29,7 +29,19 @@ public static class WindowEndpoints
                     Content = w.Render(),
                     w.AppName,
                     w.Meta.CreatedAt,
-                    w.Meta.UpdatedAt
+                    w.Meta.UpdatedAt,
+                    Actions = w.Actions.Select(a => new
+                    {
+                        a.Id,
+                        a.Label,
+                        Parameters = a.Parameters.Select(p => new
+                        {
+                            p.Name,
+                            p.Type,
+                            p.Required,
+                            p.Default
+                        })
+                    })
                 });
 
             return Results.Ok(windows);
@@ -61,7 +73,14 @@ public static class WindowEndpoints
                 Actions = window.Actions.Select(a => new
                 {
                     a.Id,
-                    a.Label
+                    a.Label,
+                    Parameters = a.Parameters.Select(p => new
+                    {
+                        p.Name,
+                        p.Type,
+                        p.Required,
+                        p.Default
+                    })
                 })
             });
         });

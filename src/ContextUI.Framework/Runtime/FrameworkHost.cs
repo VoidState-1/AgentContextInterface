@@ -61,6 +61,19 @@ public class FrameworkHost
     }
 
     /// <summary>
+    /// 获取全部应用实例
+    /// </summary>
+    public IEnumerable<ContextApp> GetAllApps()
+    {
+        return _apps.Values;
+    }
+
+    /// <summary>
+    /// 应用是否已启动生命周期
+    /// </summary>
+    public bool IsStarted(string appName) => _startedApps.Contains(appName);
+
+    /// <summary>
     /// 获取应用
     /// </summary>
     public ContextApp? GetApp(string name)

@@ -4,6 +4,7 @@ using ContextUI.Core.Services;
 using ContextUI.Framework.Runtime;
 using ContextUI.LLM.Abstractions;
 using ContextUI.LLM.Services;
+using System.Text;
 using System.Text.Json;
 
 namespace ContextUI.LLM;
@@ -124,6 +125,33 @@ public class InteractionController
         _contextManager.Prune(_maxContextItems);
 
         return InteractionResult.Ok(assistantOutput, action, actionResult);
+    }
+
+    /// <summary>
+    /// 调试入口：获取当前将发送给 LLM 的消息快照
+    /// </summary>
+    public IReadOnlyList<LlmMessage> GetCurrentLlmInputSnapshot()
+    {
+        EnsureInitialized();
+        var activeItems = _contextManager.GetActive();
+        return _renderer.Render(activeItems, _windowManager, _renderOptions);
+    }
+
+    /// <summary>
+    /// 调试入口：将当前 LLM 输入渲染为单块文本
+    /// </summary>
+    public string GetCurrentLlmInputRaw()
+    {
+        var messages = GetCurrentLlmInputSnapshot();
+
+        var sb = new StringBuilder();
+        foreach (var msg in messages)
+        {
+            sb.AppendLine($"[{msg.Role}]");
+            sb.AppendLine(msg.Content);
+            sb.AppendLine();
+        }
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>

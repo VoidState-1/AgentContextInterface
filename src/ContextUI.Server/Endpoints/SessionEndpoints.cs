@@ -1,4 +1,5 @@
 using ContextUI.Server.Services;
+using System.Text;
 
 namespace ContextUI.Server.Endpoints;
 
@@ -102,6 +103,81 @@ public static class SessionEndpoints
             });
 
             return Results.Ok(timeline);
+        });
+
+        // 获取会话原始上下文文本（单块字符串）
+        group.MapGet("/{sessionId}/context/raw", (
+            string sessionId,
+            bool includeObsolete,
+            ISessionManager sessionManager) =>
+        {
+            var session = sessionManager.GetSession(sessionId);
+            if (session == null)
+            {
+                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+            }
+
+            var items = includeObsolete
+                ? session.Context.GetAll()
+                : session.Context.GetActive();
+
+            var sb = new StringBuilder();
+            foreach (var item in items)
+            {
+                if (item.Type == Core.Models.ContextItemType.Window)
+                {
+                    var window = session.Windows.Get(item.Content);
+                    if (window != null)
+                    {
+                        sb.AppendLine(window.Render());
+                    }
+                }
+                else
+                {
+                    sb.AppendLine(item.Content);
+                }
+
+                sb.AppendLine();
+            }
+
+            return Results.Text(sb.ToString().TrimEnd(), "text/plain; charset=utf-8");
+        });
+
+        // 获取当前发送给 LLM 的原始输入快照（单块字符串）
+        group.MapGet("/{sessionId}/llm-input/raw", (
+            string sessionId,
+            ISessionManager sessionManager) =>
+        {
+            var session = sessionManager.GetSession(sessionId);
+            if (session == null)
+            {
+                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+            }
+
+            var raw = session.Interaction.GetCurrentLlmInputRaw();
+            return Results.Text(raw, "text/plain; charset=utf-8");
+        });
+
+        // 获取会话可用应用列表（用于调试模拟器）
+        group.MapGet("/{sessionId}/apps", (string sessionId, ISessionManager sessionManager) =>
+        {
+            var session = sessionManager.GetSession(sessionId);
+            if (session == null)
+            {
+                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+            }
+
+            var apps = session.Host.GetAllApps()
+                .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(app => new
+                {
+                    app.Name,
+                    Description = app.AppDescription,
+                    app.Tags,
+                    IsStarted = session.Host.IsStarted(app.Name)
+                });
+
+            return Results.Ok(apps);
         });
 
         // 关闭会话
