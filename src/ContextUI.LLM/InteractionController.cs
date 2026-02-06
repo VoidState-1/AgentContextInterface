@@ -20,6 +20,7 @@ public class InteractionController
     private readonly ActionExecutor _actionExecutor;
     private readonly IContextRenderer _renderer;
     private readonly RenderOptions _renderOptions;
+    private readonly int _maxContextItems;
 
     private bool _initialized;
 
@@ -30,7 +31,8 @@ public class InteractionController
         IWindowManager windowManager,
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
-        RenderOptions? renderOptions = null)
+        RenderOptions? renderOptions = null,
+        int maxContextItems = 100)
     {
         _llm = llm;
         _host = host;
@@ -39,6 +41,7 @@ public class InteractionController
         _actionExecutor = actionExecutor;
         _renderer = renderer ?? new ContextRenderer();
         _renderOptions = renderOptions ?? new RenderOptions();
+        _maxContextItems = Math.Max(10, maxContextItems);
     }
 
     /// <summary>
@@ -88,7 +91,7 @@ public class InteractionController
             actionResult = await ExecuteActionAsync(action);
         }
 
-        _contextManager.Prune();
+        _contextManager.Prune(_maxContextItems);
 
         return InteractionResult.Ok(responseContent, action, actionResult, llmResponse.Usage);
     }
@@ -170,7 +173,7 @@ public class InteractionController
 
         if (!TryExtractLaunchCommand(result.Data, out var appName, out var target, out var closeSource))
         {
-            _contextManager.Prune();
+            _contextManager.Prune(_maxContextItems);
             return result;
         }
 
@@ -194,7 +197,7 @@ public class InteractionController
                     });
             }
 
-            _contextManager.Prune();
+            _contextManager.Prune(_maxContextItems);
             return result;
         }
         catch (Exception ex)

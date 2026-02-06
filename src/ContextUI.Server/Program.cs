@@ -4,6 +4,7 @@ using ContextUI.LLM.Services;
 using ContextUI.Server.Endpoints;
 using ContextUI.Server.Hubs;
 using ContextUI.Server.Services;
+using ContextUI.Server.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +28,10 @@ builder.Services.AddSignalR();
 builder.Services.Configure<OpenRouterConfig>(
     builder.Configuration.GetSection(OpenRouterConfig.SectionName));
 
+// ContextUI 配置
+builder.Services.Configure<ContextUIOptions>(
+    builder.Configuration.GetSection(ContextUIOptions.SectionName));
+
 // HTTP Client
 builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>((sp, client) =>
 {
@@ -48,7 +53,8 @@ builder.Services.AddSingleton<ISessionManager>(sp =>
 {
     var llmBridge = sp.GetRequiredService<ILLMBridge>();
     var hubNotifier = sp.GetRequiredService<IContextUIHubNotifier>();
-    return new SessionManager(llmBridge, hubNotifier);
+    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContextUIOptions>>().Value;
+    return new SessionManager(llmBridge, hubNotifier, options);
 });
 
 // Hub 通知器

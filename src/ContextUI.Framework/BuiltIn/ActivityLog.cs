@@ -13,9 +13,15 @@ namespace ContextUI.Framework.BuiltIn;
 public class ActivityLog : ContextApp
 {
     private readonly List<LogItem> _logs = [];
+    private readonly int _maxLogs;
     private int _windowCounter = 0;
     private IDisposable? _actionSub;
     private IDisposable? _appSub;
+
+    public ActivityLog(int maxLogs = 50)
+    {
+        _maxLogs = Math.Max(10, maxLogs);
+    }
 
     public override string Name => "activity_log";
 
@@ -99,9 +105,7 @@ public class ActivityLog : ContextApp
     /// </summary>
     private void CompactIfNeeded()
     {
-        const int maxLogs = 50;
-
-        while (_logs.Count > maxLogs)
+        while (_logs.Count > _maxLogs)
         {
             var oldest = _logs.FirstOrDefault(l => !l.IsPersistent);
             if (oldest == null) break;

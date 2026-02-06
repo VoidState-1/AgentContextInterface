@@ -4,6 +4,7 @@ using ContextUI.Core.Services;
 using ContextUI.Framework.Runtime;
 using ContextUI.LLM;
 using ContextUI.LLM.Abstractions;
+using ContextUI.Server.Settings;
 using System.Threading;
 
 namespace ContextUI.Server.Services;
@@ -36,10 +37,16 @@ public class SessionContext : IDisposable
     public SessionContext(
         string sessionId,
         ILLMBridge llmBridge,
+        ContextUIOptions options,
         Action<FrameworkHost>? configureApps = null)
     {
         SessionId = sessionId;
         CreatedAt = DateTime.UtcNow;
+
+        var maxTokens = Math.Max(1000, options.Render.MaxTokens);
+        var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, maxTokens);
+        var maxContextItems = Math.Max(10, options.Context.MaxItems);
+        var maxLogs = Math.Max(10, options.ActivityLog.MaxLogs);
 
         // 创建 Core 服务
         Clock = new SeqClock();
@@ -54,7 +61,7 @@ public class SessionContext : IDisposable
         ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
         // 注册内置应用
-        RegisterBuiltInApps();
+        RegisterBuiltInApps(maxLogs);
 
         // 允许外部配置额外的应用
         configureApps?.Invoke(Host);
@@ -65,20 +72,26 @@ public class SessionContext : IDisposable
             Host,
             Context,
             Windows,
-            ActionExecutor
+            ActionExecutor,
+            renderOptions: new RenderOptions
+            {
+                MaxTokens = maxTokens,
+                MinConversationTokens = minConversationTokens
+            },
+            maxContextItems: maxContextItems
         );
     }
 
     /// <summary>
     /// 注册内置应用
     /// </summary>
-    private void RegisterBuiltInApps()
+    private void RegisterBuiltInApps(int maxLogs)
     {
         // 注册应用启动器
         Host.Register(new Framework.BuiltIn.AppLauncher(() => Host.GetApps().ToList()));
 
         // 注册活动日志
-        Host.Register(new Framework.BuiltIn.ActivityLog());
+        Host.Register(new Framework.BuiltIn.ActivityLog(maxLogs));
     }
 
     public async Task<T> RunSerializedAsync<T>(Func<Task<T>> action, CancellationToken ct = default)

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using ContextUI.Core.Abstractions;
 using ContextUI.LLM.Abstractions;
 using ContextUI.Server.Hubs;
+using ContextUI.Server.Settings;
 
 namespace ContextUI.Server.Services;
 
@@ -59,6 +60,7 @@ public class SessionManager : ISessionManager
     private readonly ConcurrentDictionary<string, Action<WindowChangedEvent>> _windowHandlers = new();
     private readonly ILLMBridge _llmBridge;
     private readonly IContextUIHubNotifier _hubNotifier;
+    private readonly ContextUIOptions _options;
     private readonly Action<Framework.Runtime.FrameworkHost>? _configureApps;
 
     public event Action<SessionChangeEvent>? OnSessionChange;
@@ -66,10 +68,12 @@ public class SessionManager : ISessionManager
     public SessionManager(
         ILLMBridge llmBridge,
         IContextUIHubNotifier hubNotifier,
+        ContextUIOptions options,
         Action<Framework.Runtime.FrameworkHost>? configureApps = null)
     {
         _llmBridge = llmBridge;
         _hubNotifier = hubNotifier;
+        _options = options;
         _configureApps = configureApps;
     }
 
@@ -77,7 +81,7 @@ public class SessionManager : ISessionManager
     {
         sessionId ??= Guid.NewGuid().ToString("N");
 
-        var context = new SessionContext(sessionId, _llmBridge, _configureApps);
+        var context = new SessionContext(sessionId, _llmBridge, _options, _configureApps);
         _sessions[sessionId] = context;
         BindWindowNotifications(context);
 
