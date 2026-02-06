@@ -14,6 +14,8 @@ namespace ContextUI.LLM;
 /// </summary>
 public class InteractionController
 {
+    private const int MaxAutoToolCallTurns = 12;
+
     private readonly ILLMBridge _llm;
     private readonly FrameworkHost _host;
     private readonly IContextManager _contextManager;
@@ -61,40 +63,47 @@ public class InteractionController
             Content = userMessage
         });
 
-        // 2. 渲染上下文为 LLM 消息
-        var activeItems = _contextManager.GetActive();
-        var messages = _renderer.Render(activeItems, _windowManager, _renderOptions);
+        ParsedAction? lastAction = null;
+        ActionResult? lastActionResult = null;
+        string lastResponseContent = "";
+        var totalUsage = new TokenUsage();
 
-        // 3. 调用 LLM
-        var llmResponse = await _llm.SendAsync(messages, ct);
-
-        if (!llmResponse.Success)
+        // Auto-loop: execute tool_call responses until the model returns
+        // a normal response without tool_call.
+        for (var turn = 0; turn <= MaxAutoToolCallTurns; turn++)
         {
-            return InteractionResult.Fail(llmResponse.Error ?? "LLM 调用失败");
-        }
+            var activeItems = _contextManager.GetActive();
+            var messages = _renderer.Render(activeItems, _windowManager, _renderOptions);
 
-        var responseContent = llmResponse.Content ?? "";
+            var llmResponse = await _llm.SendAsync(messages, ct);
+            if (!llmResponse.Success)
+            {
+                return InteractionResult.Fail(llmResponse.Error ?? "LLM 调用失败");
+            }
 
-        // 4. 添加 AI 响应到上下文
-        _contextManager.Add(new ContextItem
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Type = ContextItemType.Assistant,
-            Content = responseContent
-        });
+            AccumulateUsage(totalUsage, llmResponse.Usage);
 
-        // 5. 解析并执行操作
-        var action = ActionParser.Parse(responseContent);
-        ActionResult? actionResult = null;
+            lastResponseContent = llmResponse.Content ?? "";
+            _contextManager.Add(new ContextItem
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = ContextItemType.Assistant,
+                Content = lastResponseContent
+            });
 
-        if (action != null)
-        {
-            actionResult = await ExecuteActionAsync(action);
+            var parsedAction = ActionParser.Parse(lastResponseContent);
+            if (parsedAction == null)
+            {
+                _contextManager.Prune(_maxContextItems);
+                return InteractionResult.Ok(lastResponseContent, lastAction, lastActionResult, totalUsage);
+            }
+
+            lastAction = parsedAction;
+            lastActionResult = await ExecuteActionAsync(parsedAction);
         }
 
         _contextManager.Prune(_maxContextItems);
-
-        return InteractionResult.Ok(responseContent, action, actionResult, llmResponse.Usage);
+        return InteractionResult.Fail($"已经连续执行 {MaxAutoToolCallTurns + 1} 次 tool_call，仍未返回非 tool_call 响应");
     }
 
     /// <summary>
@@ -163,7 +172,8 @@ public class InteractionController
         {
             return await ExecuteCreateAsync(action);
         }
-        else if (action.Type == "action")
+
+        if (action.Type == "action")
         {
             return await ExecuteWindowActionAsync(action);
         }
@@ -315,14 +325,22 @@ public class InteractionController
         }
     }
 
-    /// <summary>
-    /// 确保已初始化
-    /// </summary>
+    private static void AccumulateUsage(TokenUsage total, TokenUsage? delta)
+    {
+        if (delta == null)
+        {
+            return;
+        }
+
+        total.PromptTokens += delta.PromptTokens;
+        total.CompletionTokens += delta.CompletionTokens;
+        total.TotalTokens += delta.TotalTokens;
+    }
+
     private void EnsureInitialized()
     {
         if (_initialized) return;
 
-        // 添加系统提示词
         _contextManager.Add(new ContextItem
         {
             Id = "system_prompt",
@@ -352,4 +370,3 @@ public class InteractionResult
     public static InteractionResult Fail(string error) =>
         new() { Success = false, Error = error };
 }
-
