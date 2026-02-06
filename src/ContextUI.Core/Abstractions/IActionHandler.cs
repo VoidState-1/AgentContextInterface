@@ -49,8 +49,13 @@ public sealed class ActionContext
         {
             int i => i,
             long l => (int)l,
-            string s when int.TryParse(s, out var parsed) => parsed,
-            System.Text.Json.JsonElement je when je.TryGetInt32(out var i) => i,
+            string s when int.TryParse(s, out var parsedString) => parsedString,
+            System.Text.Json.JsonElement je when
+                je.ValueKind == System.Text.Json.JsonValueKind.Number &&
+                je.TryGetInt32(out var i) => i,
+            System.Text.Json.JsonElement je when
+                je.ValueKind == System.Text.Json.JsonValueKind.String &&
+                int.TryParse(je.GetString(), out var parsedElementString) => parsedElementString,
             _ => null
         };
     }

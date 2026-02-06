@@ -91,7 +91,14 @@ public class ActionExecutor
                 ActionId = actionId,
                 Parameters = parameters
             };
-            result = await window.Handler.ExecuteAsync(context);
+            try
+            {
+                result = await window.Handler.ExecuteAsync(context);
+            }
+            catch (Exception ex)
+            {
+                result = ActionResult.Fail($"操作执行异常: {ex.Message}");
+            }
         }
         else
         {

@@ -62,6 +62,7 @@ public class SessionContext : IDisposable
 
         // 注册内置应用
         RegisterBuiltInApps(maxLogs);
+        Host.Start("activity_log");
 
         // 允许外部配置额外的应用
         configureApps?.Invoke(Host);

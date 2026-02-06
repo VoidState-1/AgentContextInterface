@@ -11,6 +11,7 @@ public class FrameworkHost
 {
     private readonly Dictionary<string, ContextApp> _apps = [];
     private readonly Dictionary<string, InMemoryAppState> _appStates = [];
+    private readonly HashSet<string> _startedApps = [];
     private readonly Dictionary<string, string> _windowToApp = [];  // windowId -> appName
     private readonly Dictionary<string, string?> _windowIntents = [];  // windowId -> intent
     private readonly RuntimeContext _context;
@@ -36,6 +37,19 @@ public class FrameworkHost
     {
         _apps[app.Name] = app;
         _appStates[app.Name] = new InMemoryAppState();
+    }
+
+    /// <summary>
+    /// 启动应用生命周期（不创建窗口）
+    /// </summary>
+    public void Start(string appName)
+    {
+        if (!_apps.TryGetValue(appName, out var app))
+        {
+            throw new InvalidOperationException($"应用 '{appName}' 未注册");
+        }
+
+        EnsureStarted(appName, app);
     }
 
     /// <summary>
@@ -76,11 +90,7 @@ public class FrameworkHost
             throw new InvalidOperationException($"应用 '{appName}' 未注册");
         }
 
-        // 注入状态和上下文
-        app.Initialize(_appStates[appName], _context);
-
-        // 生命周期
-        app.OnCreate();
+        EnsureStarted(appName, app);
 
         // 创建窗口
         var definition = app.CreateWindow(intent);
@@ -170,7 +180,23 @@ public class FrameworkHost
             }
 
             app.OnDestroy();
+            _startedApps.Remove(appName);
         }
+    }
+
+    /// <summary>
+    /// 确保应用已启动
+    /// </summary>
+    private void EnsureStarted(string appName, ContextApp app)
+    {
+        if (_startedApps.Contains(appName))
+        {
+            return;
+        }
+
+        app.Initialize(_appStates[appName], _context);
+        app.OnCreate();
+        _startedApps.Add(appName);
     }
 }
 
