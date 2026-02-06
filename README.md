@@ -1,7 +1,5 @@
 # Agent Context Interface (ACI)
 
-> 就像 GUI 让人类摆脱了命令行，ACI 让 AI 摆脱了复杂抽象的 MCP 接口
-
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet" alt=".NET 10.0">
   <img src="https://img.shields.io/badge/C%23-13.0-239120?style=flat-square&logo=csharp" alt="C# 13.0">
