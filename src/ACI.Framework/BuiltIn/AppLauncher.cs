@@ -4,9 +4,6 @@ using ACI.Framework.Runtime;
 
 namespace ACI.Framework.BuiltIn;
 
-/// <summary>
-/// 应用启动器 - 内置应用
-/// </summary>
 public class AppLauncher : ContextApp
 {
     private readonly Func<IEnumerable<(string Name, string? Description)>> _getApps;
@@ -18,46 +15,44 @@ public class AppLauncher : ContextApp
 
     public override string Name => "launcher";
 
-    public override string? AppDescription => "查看并启动已安装的应用";
+    public override string? AppDescription => "Browse and launch installed applications.";
 
     public override ContextWindow CreateWindow(string? intent)
     {
         return new ContextWindow
         {
             Id = "launcher",
-            Description = new Text("应用启动器。选择一个应用打开。"),
+            Description = new Text("Application launcher. Select an app to open."),
             Content = new VStack
             {
                 Children = BuildAppList()
+            },
+            Options = new WindowOptions
+            {
+                Closable = false,
+                PinInPrompt = true
             },
             Actions =
             [
                 new ContextAction
                 {
                     Id = "open",
-                    Label = "打开应用",
+                    Label = "Open App",
                     Handler = async ctx =>
                     {
                         var appName = ctx.GetString("app");
                         if (string.IsNullOrEmpty(appName))
                         {
-                            return ActionResult.Fail("请指定应用名称");
+                            return ActionResult.Fail("Please specify an app name.");
                         }
-                        // 返回数据，让调用方处理启动逻辑
+
                         return ActionResult.Ok(
-                            summary: $"打开应用 {appName}",
+                            summary: $"Open app {appName}",
                             shouldClose: false,
                             data: new { action = "launch", app = appName, close_source = true }
                         );
                     }
-                }.WithParam("app", ParamType.String),
-
-                new ContextAction
-                {
-                    Id = "close",
-                    Label = "关闭",
-                    Handler = _ => Task.FromResult(ActionResult.Close())
-                }
+                }.WithParam("app", ParamType.String)
             ]
         };
     }
@@ -67,17 +62,17 @@ public class AppLauncher : ContextApp
         var apps = _getApps().ToList();
         var components = new List<IComponent>
         {
-            new Text("已安装的应用："),
+            new Text("Installed applications:"),
             new Text("")
         };
 
-        for (int i = 0; i < apps.Count; i++)
+        for (var index = 0; index < apps.Count; index++)
         {
-            var (name, desc) = apps[i];
-            var line = $"{i + 1}. {name}";
-            if (!string.IsNullOrEmpty(desc))
+            var (name, description) = apps[index];
+            var line = $"{index + 1}. {name}";
+            if (!string.IsNullOrEmpty(description))
             {
-                line += $" - {desc}";
+                line += $" - {description}";
             }
             components.Add(new Text(line));
         }

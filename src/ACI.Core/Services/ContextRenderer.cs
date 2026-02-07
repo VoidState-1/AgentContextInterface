@@ -91,7 +91,7 @@ public class ContextRenderer : IContextRenderer
         }
 
         // 超限时，执行裁剪策略
-        TrimToFit(candidates, ref totalTokens, options);
+        TrimToFit(candidates, ref totalTokens, options, windowManager);
 
         // 构建最终消息列表
         return candidates
@@ -106,7 +106,11 @@ public class ContextRenderer : IContextRenderer
     /// 2. 当对话 Token 低于保护阈值时，开始裁剪旧的 Window
     /// 3. System 永不裁剪
     /// </summary>
-    private void TrimToFit(List<RenderCandidate> candidates, ref int totalTokens, RenderOptions options)
+    private void TrimToFit(
+        List<RenderCandidate> candidates,
+        ref int totalTokens,
+        RenderOptions options,
+        IWindowManager windowManager)
     {
         // 计算当前对话 Token
         int conversationTokens = candidates
@@ -142,6 +146,12 @@ public class ContextRenderer : IContextRenderer
 
             // 只裁剪窗口
             if (candidate.Item.Type != ContextItemType.Window)
+            {
+                continue;
+            }
+
+            var window = windowManager.Get(candidate.Item.Content);
+            if (window?.Options.PinInPrompt == true)
             {
                 continue;
             }

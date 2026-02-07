@@ -168,42 +168,7 @@ public class InteractionController
     /// </summary>
     private async Task<ActionResult> ExecuteActionAsync(ParsedAction action)
     {
-        if (action.Type == "create")
-        {
-            return await ExecuteCreateAsync(action);
-        }
-
-        if (action.Type == "action")
-        {
-            return await ExecuteWindowActionAsync(action);
-        }
-
-        return ActionResult.Fail($"未知操作类型: {action.Type}");
-    }
-
-    /// <summary>
-    /// 执行 create 操作
-    /// </summary>
-    private Task<ActionResult> ExecuteCreateAsync(ParsedAction action)
-    {
-        try
-        {
-            var appName = action.AppName;
-
-            // 如果没有指定应用名，打开应用启动器
-            if (string.IsNullOrEmpty(appName))
-            {
-                appName = "launcher";
-            }
-
-            _host.Launch(appName, action.Target);
-
-            return Task.FromResult(ActionResult.Ok($"已打开应用: {appName}"));
-        }
-        catch (Exception ex)
-        {
-            return Task.FromResult(ActionResult.Fail($"打开应用失败: {ex.Message}"));
-        }
+        return await ExecuteWindowActionAsync(action);
     }
 
     /// <summary>
@@ -211,11 +176,6 @@ public class InteractionController
     /// </summary>
     private async Task<ActionResult> ExecuteWindowActionAsync(ParsedAction action)
     {
-        if (string.IsNullOrEmpty(action.WindowId) || string.IsNullOrEmpty(action.ActionId))
-        {
-            return ActionResult.Fail("操作缺少必要参数");
-        }
-
         return await ExecuteWindowActionAsync(action.WindowId, action.ActionId, action.Parameters);
     }
 

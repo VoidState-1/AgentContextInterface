@@ -43,6 +43,11 @@ public class ActionExecutor
         // close 是系统保留操作，允许窗口不显式声明
         if (actionId == "close")
         {
+            if (!window.Options.Closable)
+            {
+                return ActionResult.Fail($"窗口 '{windowId}' 不允许关闭");
+            }
+
             var seq1 = _clock.Next();
             var summary = parameters?.TryGetValue("summary", out var summaryObj) == true
                 ? summaryObj?.ToString()

@@ -96,8 +96,8 @@ public static class InteractionEndpoints
             Response = result.Response,
             Action = result.Action != null ? new ActionInfo
             {
-                Type = result.Action.Type,
-                AppName = result.Action.AppName,
+                Type = "action",
+                AppName = null,
                 WindowId = result.Action.WindowId,
                 ActionId = result.Action.ActionId
             } : null,

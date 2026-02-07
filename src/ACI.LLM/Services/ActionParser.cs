@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 
 namespace ACI.LLM.Services;
 
@@ -23,46 +24,29 @@ public static class ActionParser
         try
         {
             var json = match.Groups[1].Value.Trim();
-            var toolCall = JsonSerializer.Deserialize<ToolCall>(json, new JsonSerializerOptions
+            var toolCall = JsonSerializer.Deserialize<ToolActionCall>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
 
             if (toolCall == null) return null;
-
-            if (toolCall.Name == "create")
+            if (string.IsNullOrWhiteSpace(toolCall.WindowId) || string.IsNullOrWhiteSpace(toolCall.ActionId))
             {
-                return new ParsedAction
-                {
-                    Type = "create",
-                    AppName = toolCall.Arguments?.GetValueOrDefault("name")?.ToString(),
-                    Target = toolCall.Arguments?.GetValueOrDefault("target")?.ToString()
-                };
+                return null;
             }
-            else if (toolCall.Name == "action")
+
+            Dictionary<string, object>? parameters = null;
+            if (toolCall.Params.HasValue && toolCall.Params.Value.ValueKind == JsonValueKind.Object)
             {
-                var windowId = toolCall.Arguments?.GetValueOrDefault("window_id")?.ToString();
-                var actionId = toolCall.Arguments?.GetValueOrDefault("action_id")?.ToString();
-
-                if (string.IsNullOrEmpty(windowId) || string.IsNullOrEmpty(actionId))
-                {
-                    return null;
-                }
-
-                Dictionary<string, object>? parameters = null;
-                if (toolCall.Arguments?.TryGetValue("params", out var paramsObj) == true && paramsObj is JsonElement paramsElement)
-                {
-                    parameters = JsonSerializer.Deserialize<Dictionary<string, object>>(paramsElement.GetRawText());
-                }
-
-                return new ParsedAction
-                {
-                    Type = "action",
-                    WindowId = windowId,
-                    ActionId = actionId,
-                    Parameters = parameters
-                };
+                parameters = JsonSerializer.Deserialize<Dictionary<string, object>>(toolCall.Params.Value.GetRawText());
             }
+
+            return new ParsedAction
+            {
+                WindowId = toolCall.WindowId!,
+                ActionId = toolCall.ActionId!,
+                Parameters = parameters
+            };
         }
         catch (JsonException)
         {
@@ -72,9 +56,15 @@ public static class ActionParser
         return null;
     }
 
-    private class ToolCall
+    private class ToolActionCall
     {
-        public string? Name { get; set; }
-        public Dictionary<string, object>? Arguments { get; set; }
+        [JsonPropertyName("window_id")]
+        public string? WindowId { get; set; }
+
+        [JsonPropertyName("action_id")]
+        public string? ActionId { get; set; }
+
+        [JsonPropertyName("params")]
+        public JsonElement? Params { get; set; }
     }
 }

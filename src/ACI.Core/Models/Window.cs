@@ -127,6 +127,11 @@ public class WindowOptions
     public RenderMode RenderMode { get; init; } = RenderMode.Full;
 
     /// <summary>
+    /// 是否在渲染裁剪时始终保留
+    /// </summary>
+    public bool PinInPrompt { get; init; } = false;
+
+    /// <summary>
     /// 刷新模式
     /// </summary>
     public RefreshMode RefreshMode { get; init; } = RefreshMode.InPlace;
