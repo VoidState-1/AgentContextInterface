@@ -1,7 +1,11 @@
 namespace ACI.LLM;
 
+/// <summary>
+/// 构建系统提示词。
+/// </summary>
 public static class PromptBuilder
 {
+    // 仅保留 action 协议：tool_call 直接传 window_id/action_id/params。
     private const string SystemPromptTemplate = """
         # AgentContextInterface System
 
@@ -34,6 +38,9 @@ public static class PromptBuilder
         3. Prefer the most recent window state (`seq` / `created_at` / `updated_at`).
         """;
 
+    /// <summary>
+    /// 返回完整系统提示词。
+    /// </summary>
     public static string BuildSystemPrompt()
     {
         return SystemPromptTemplate;

@@ -9,6 +9,9 @@ using System.Threading;
 
 namespace ACI.Server.Services;
 
+/// <summary>
+/// 单个会话的运行时容器，聚合 Core / Framework / LLM 三层服务。
+/// </summary>
 public class SessionContext : IDisposable
 {
     public string SessionId { get; }
@@ -28,6 +31,9 @@ public class SessionContext : IDisposable
     private bool _disposed;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
+    /// <summary>
+    /// 构建并初始化会话上下文。
+    /// </summary>
     public SessionContext(
         string sessionId,
         ILLMBridge llmBridge,
@@ -56,6 +62,7 @@ public class SessionContext : IDisposable
         Host.Start("activity_log");
 
         configureApps?.Invoke(Host);
+        // 启动器窗口改为会话初始化即常驻。
         Host.Launch("launcher");
 
         Interaction = new InteractionController(
@@ -73,6 +80,9 @@ public class SessionContext : IDisposable
         );
     }
 
+    /// <summary>
+    /// 注册内置应用。
+    /// </summary>
     private void RegisterBuiltInApps(int maxLogs)
     {
         Host.Register(new Framework.BuiltIn.AppLauncher(() => Host.GetApps().ToList()));
@@ -80,6 +90,9 @@ public class SessionContext : IDisposable
         Host.Register(new Framework.BuiltIn.FileExplorerApp());
     }
 
+    /// <summary>
+    /// 串行执行会话内任务，避免并发修改状态。
+    /// </summary>
     public async Task<T> RunSerializedAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
     {
         await _sessionLock.WaitAsync(ct);
@@ -93,6 +106,9 @@ public class SessionContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// 将窗口生命周期变化同步到上下文时间线。
+    /// </summary>
     private void OnWindowChanged(WindowChangedEvent evt)
     {
         if (evt.Type == WindowEventType.Created)
@@ -124,6 +140,9 @@ public class SessionContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// 释放会话资源。
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;

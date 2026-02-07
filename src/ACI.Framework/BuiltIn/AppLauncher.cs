@@ -4,10 +4,19 @@ using ACI.Framework.Runtime;
 
 namespace ACI.Framework.BuiltIn;
 
+/// <summary>
+/// 内置应用启动器窗口。
+/// </summary>
 public class AppLauncher : ContextApp
 {
+    /// <summary>
+    /// 获取当前可启动应用列表。
+    /// </summary>
     private readonly Func<IEnumerable<(string Name, string? Description)>> _getApps;
 
+    /// <summary>
+    /// 创建启动器应用。
+    /// </summary>
     public AppLauncher(Func<IEnumerable<(string Name, string? Description)>> getApps)
     {
         _getApps = getApps;
@@ -29,6 +38,7 @@ public class AppLauncher : ContextApp
             },
             Options = new WindowOptions
             {
+                // 启动器常驻且不可关闭，同时在 prompt 裁剪中固定保留。
                 Closable = false,
                 PinInPrompt = true
             },
@@ -46,6 +56,7 @@ public class AppLauncher : ContextApp
                             return ActionResult.Fail("Please specify an app name.");
                         }
 
+                        // 返回 launch 指令，由 InteractionController 统一执行启动流程。
                         return ActionResult.Ok(
                             summary: $"Open app {appName}",
                             shouldClose: false,
@@ -57,6 +68,9 @@ public class AppLauncher : ContextApp
         };
     }
 
+    /// <summary>
+    /// 构建可用应用列表展示内容。
+    /// </summary>
     private List<IComponent> BuildAppList()
     {
         var apps = _getApps().ToList();
