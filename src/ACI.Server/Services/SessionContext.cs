@@ -44,8 +44,10 @@ public class SessionContext : IDisposable
         CreatedAt = DateTime.UtcNow;
 
         var maxTokens = Math.Max(1000, options.Render.MaxTokens);
-        var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, maxTokens);
-        var maxContextItems = Math.Max(10, options.Context.MaxItems);
+        var trimToTokens = options.Render.TrimToTokens <= 0
+            ? Math.Max(1, maxTokens / 2)
+            : Math.Clamp(options.Render.TrimToTokens, 1, maxTokens);
+        var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, trimToTokens);
         var maxLogs = Math.Max(10, options.ActivityLog.MaxLogs);
 
         Clock = new SeqClock();
@@ -74,9 +76,9 @@ public class SessionContext : IDisposable
             renderOptions: new RenderOptions
             {
                 MaxTokens = maxTokens,
-                MinConversationTokens = minConversationTokens
-            },
-            maxContextItems: maxContextItems
+                MinConversationTokens = minConversationTokens,
+                TrimToTokens = trimToTokens
+            }
         );
     }
 

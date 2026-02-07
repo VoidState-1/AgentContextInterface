@@ -8,7 +8,9 @@ namespace ACI.Core.Services;
 /// </summary>
 public class ContextManager : IContextManager
 {
-    private readonly List<ContextItem> _items = [];
+    private readonly List<ContextItem> _activeItems = [];
+    private readonly List<ContextItem> _archiveItems = [];
+    private readonly Dictionary<string, ContextItem> _archiveById = new(StringComparer.Ordinal);
     private readonly ISeqClock _clock;
     private readonly object _lock = new();
 
@@ -31,11 +33,14 @@ public class ContextManager : IContextManager
         {
             // 自动分配 seq
             item.Seq = _clock.Next();
+            item.EstimatedTokens = item.Type == ContextItemType.Window
+                ? 0
+                : EstimateTokens(item.Content);
 
             // 如果是窗口类型，标记同一窗口的旧项为过时
             if (item.Type == ContextItemType.Window)
             {
-                foreach (var old in _items.Where(i =>
+                foreach (var old in _activeItems.Where(i =>
                     i.Type == ContextItemType.Window &&
                     i.Content == item.Content &&
                     !i.IsObsolete))
@@ -44,7 +49,9 @@ public class ContextManager : IContextManager
                 }
             }
 
-            _items.Add(item);
+            _activeItems.Add(item);
+            _archiveItems.Add(item);
+            _archiveById[item.Id] = item;
         }
     }
 
@@ -55,7 +62,18 @@ public class ContextManager : IContextManager
     {
         lock (_lock)
         {
-            return _items.OrderBy(i => i.Seq).ToList();
+            return _activeItems.OrderBy(i => i.Seq).ToList();
+        }
+    }
+
+    /// <summary>
+    /// 获取归档备份（按 seq 排序）
+    /// </summary>
+    public IReadOnlyList<ContextItem> GetArchive()
+    {
+        lock (_lock)
+        {
+            return _archiveItems.OrderBy(i => i.Seq).ToList();
         }
     }
 
@@ -66,10 +84,26 @@ public class ContextManager : IContextManager
     {
         lock (_lock)
         {
-            return _items
+            return _activeItems
                 .Where(i => !i.IsObsolete)
                 .OrderBy(i => i.Seq)
                 .ToList();
+        }
+    }
+
+    /// <summary>
+    /// 通过 Id 查找上下文项（包含归档）
+    /// </summary>
+    public ContextItem? GetById(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        lock (_lock)
+        {
+            return _archiveById.TryGetValue(id, out var item) ? item : null;
         }
     }
 
@@ -80,7 +114,7 @@ public class ContextManager : IContextManager
     {
         lock (_lock)
         {
-            foreach (var item in _items.Where(i =>
+            foreach (var item in _activeItems.Where(i =>
                 i.Type == ContextItemType.Window &&
                 i.Content == windowId))
             {
@@ -96,7 +130,7 @@ public class ContextManager : IContextManager
     {
         lock (_lock)
         {
-            return _items
+            return _activeItems
                 .Where(i => i.Type == ContextItemType.Window &&
                            i.Content == windowId &&
                            !i.IsObsolete)
@@ -106,27 +140,135 @@ public class ContextManager : IContextManager
     }
 
     /// <summary>
-    /// 清理过旧的上下文项（保留最近的 maxItems 个非窗口项）
+    /// 统一裁剪入口：按 Token 预算真实删除活跃条目
     /// </summary>
-    public void Prune(int maxItems = 100)
+    public void Prune(
+        IWindowManager windowManager,
+        int maxTokens,
+        int minConversationTokens,
+        int trimToTokens)
     {
+        if (windowManager == null)
+        {
+            throw new ArgumentNullException(nameof(windowManager));
+        }
+
         lock (_lock)
         {
-            // 只清理非窗口、非系统的对话项
-            var conversationItems = _items
-                .Where(i => i.Type == ContextItemType.User || i.Type == ContextItemType.Assistant)
-                .OrderBy(i => i.Seq)
-                .ToList();
-
-            if (conversationItems.Count > maxItems)
+            if (maxTokens <= 0)
             {
-                var toRemove = conversationItems.Take(conversationItems.Count - maxItems).ToList();
-                foreach (var item in toRemove)
+                return;
+            }
+
+            var targetTokens = trimToTokens <= 0
+                ? Math.Max(1, maxTokens / 2)
+                : Math.Clamp(trimToTokens, 1, maxTokens);
+            var protectedConversationTokens = Math.Clamp(minConversationTokens, 0, targetTokens);
+
+            var candidates = BuildPruneCandidates(windowManager);
+            var totalTokens = candidates.Sum(c => c.Tokens);
+            if (totalTokens <= maxTokens)
+            {
+                return;
+            }
+
+            var conversationTokens = candidates
+                .Where(c => c.Item.Type == ContextItemType.User || c.Item.Type == ContextItemType.Assistant)
+                .Sum(c => c.Tokens);
+
+            // 第一阶段：裁剪旧的 User / Assistant
+            for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
+            {
+                var candidate = candidates[i];
+                if (candidate.Item.Type != ContextItemType.User &&
+                    candidate.Item.Type != ContextItemType.Assistant)
                 {
-                    _items.Remove(item);
+                    continue;
+                }
+
+                if (conversationTokens - candidate.Tokens < protectedConversationTokens)
+                {
+                    continue;
+                }
+
+                if (_activeItems.Remove(candidate.Item))
+                {
+                    totalTokens -= candidate.Tokens;
+                    conversationTokens -= candidate.Tokens;
+                }
+            }
+
+            // 第二阶段：裁剪旧的 Window（PinInPrompt 不裁）
+            for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
+            {
+                var candidate = candidates[i];
+                if (candidate.Item.Type != ContextItemType.Window)
+                {
+                    continue;
+                }
+
+                if (candidate.PinInPrompt)
+                {
+                    continue;
+                }
+
+                if (_activeItems.Remove(candidate.Item))
+                {
+                    totalTokens -= candidate.Tokens;
                 }
             }
         }
+    }
+
+    private List<PruneCandidate> BuildPruneCandidates(IWindowManager windowManager)
+    {
+        return _activeItems
+            .Where(i => !i.IsObsolete)
+            .OrderBy(i => i.Seq)
+            .Select(item =>
+            {
+                if (item.Type == ContextItemType.Window)
+                {
+                    var window = windowManager.Get(item.Content);
+                    var windowContent = window?.Render() ?? string.Empty;
+                    var windowTokens = EstimateTokens(windowContent);
+
+                    item.EstimatedTokens = windowTokens;
+                    return new PruneCandidate
+                    {
+                        Item = item,
+                        Tokens = windowTokens,
+                        PinInPrompt = window?.Options.PinInPrompt == true
+                    };
+                }
+
+                var contentTokens = EstimateTokens(item.Content);
+                item.EstimatedTokens = contentTokens;
+                return new PruneCandidate
+                {
+                    Item = item,
+                    Tokens = contentTokens,
+                    PinInPrompt = false
+                };
+            })
+            .ToList();
+    }
+
+    private static int EstimateTokens(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+        {
+            return 0;
+        }
+
+        return (int)Math.Ceiling(content.Length / 2.5);
+    }
+
+    private class PruneCandidate
+    {
+        public required ContextItem Item { get; init; }
+        public required int Tokens { get; init; }
+        public bool PinInPrompt { get; init; }
     }
 }
 

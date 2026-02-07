@@ -23,9 +23,19 @@ public interface IContextManager
     IReadOnlyList<ContextItem> GetAll();
 
     /// <summary>
+    /// 获取归档备份（按 seq 排序，包含已裁剪条目）
+    /// </summary>
+    IReadOnlyList<ContextItem> GetArchive();
+
+    /// <summary>
     /// 获取有效的上下文项（排除 IsObsolete，按 seq 排序）
     /// </summary>
     IReadOnlyList<ContextItem> GetActive();
+
+    /// <summary>
+    /// 通过 Id 查找上下文项（包含归档）
+    /// </summary>
+    ContextItem? GetById(string id);
 
     /// <summary>
     /// 标记窗口相关的上下文项为过时
@@ -38,8 +48,12 @@ public interface IContextManager
     ContextItem? GetWindowItem(string windowId);
 
     /// <summary>
-    /// 清理过旧的上下文项
+    /// 统一裁剪入口：按 Token 预算真实删除活跃条目
     /// </summary>
-    void Prune(int maxItems = 100);
+    void Prune(
+        IWindowManager windowManager,
+        int maxTokens,
+        int minConversationTokens,
+        int trimToTokens);
 }
 

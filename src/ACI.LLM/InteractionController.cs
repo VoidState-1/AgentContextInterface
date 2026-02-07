@@ -23,7 +23,6 @@ public class InteractionController
     private readonly ActionExecutor _actionExecutor;
     private readonly IContextRenderer _renderer;
     private readonly RenderOptions _renderOptions;
-    private readonly int _maxContextItems;
 
     private bool _initialized;
 
@@ -34,8 +33,7 @@ public class InteractionController
         IWindowManager windowManager,
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
-        RenderOptions? renderOptions = null,
-        int maxContextItems = 100)
+        RenderOptions? renderOptions = null)
     {
         _llm = llm;
         _host = host;
@@ -44,7 +42,6 @@ public class InteractionController
         _actionExecutor = actionExecutor;
         _renderer = renderer ?? new ContextRenderer();
         _renderOptions = renderOptions ?? new RenderOptions();
-        _maxContextItems = Math.Max(10, maxContextItems);
     }
 
     /// <summary>
@@ -72,6 +69,7 @@ public class InteractionController
         // a normal response without tool_call.
         for (var turn = 0; turn <= MaxAutoToolCallTurns; turn++)
         {
+            PruneContext();
             var activeItems = _contextManager.GetActive();
             var messages = _renderer.Render(activeItems, _windowManager, _renderOptions);
 
@@ -94,7 +92,7 @@ public class InteractionController
             var parsedAction = ActionParser.Parse(lastResponseContent);
             if (parsedAction == null)
             {
-                _contextManager.Prune(_maxContextItems);
+                PruneContext();
                 return InteractionResult.Ok(lastResponseContent, lastAction, lastActionResult, totalUsage);
             }
 
@@ -102,7 +100,7 @@ public class InteractionController
             lastActionResult = await ExecuteActionAsync(parsedAction);
         }
 
-        _contextManager.Prune(_maxContextItems);
+        PruneContext();
         return InteractionResult.Fail($"已经连续执行 {MaxAutoToolCallTurns + 1} 次 tool_call，仍未返回非 tool_call 响应");
     }
 
@@ -131,7 +129,7 @@ public class InteractionController
             actionResult = await ExecuteActionAsync(action);
         }
 
-        _contextManager.Prune(_maxContextItems);
+        PruneContext();
 
         return InteractionResult.Ok(assistantOutput, action, actionResult);
     }
@@ -142,6 +140,7 @@ public class InteractionController
     public IReadOnlyList<LlmMessage> GetCurrentLlmInputSnapshot()
     {
         EnsureInitialized();
+        PruneContext();
         var activeItems = _contextManager.GetActive();
         return _renderer.Render(activeItems, _windowManager, _renderOptions);
     }
@@ -201,7 +200,7 @@ public class InteractionController
 
         if (!TryExtractLaunchCommand(result.Data, out var appName, out var target, out var closeSource))
         {
-            _contextManager.Prune(_maxContextItems);
+            PruneContext();
             return result;
         }
 
@@ -225,7 +224,7 @@ public class InteractionController
                     });
             }
 
-            _contextManager.Prune(_maxContextItems);
+            PruneContext();
             return result;
         }
         catch (Exception ex)
@@ -295,6 +294,15 @@ public class InteractionController
         total.PromptTokens += delta.PromptTokens;
         total.CompletionTokens += delta.CompletionTokens;
         total.TotalTokens += delta.TotalTokens;
+    }
+
+    private void PruneContext()
+    {
+        _contextManager.Prune(
+            _windowManager,
+            _renderOptions.MaxTokens,
+            _renderOptions.MinConversationTokens,
+            _renderOptions.TrimToTokens);
     }
 
     private void EnsureInitialized()

@@ -69,7 +69,7 @@ public static class SessionEndpoints
             }
 
             var items = includeObsolete
-                ? session.Context.GetAll()
+                ? session.Context.GetArchive()
                 : session.Context.GetActive();
 
             var timeline = items.Select(item =>
@@ -118,7 +118,7 @@ public static class SessionEndpoints
             }
 
             var items = includeObsolete
-                ? session.Context.GetAll()
+                ? session.Context.GetArchive()
                 : session.Context.GetActive();
 
             var sb = new StringBuilder();
