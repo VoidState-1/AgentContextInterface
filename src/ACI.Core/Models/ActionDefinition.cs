@@ -23,6 +23,11 @@ public class ActionDefinition
     public List<ParameterDefinition> Parameters { get; init; } = [];
 
     /// <summary>
+    /// 执行模式（默认同步）
+    /// </summary>
+    public ActionExecutionMode Mode { get; init; } = ActionExecutionMode.Sync;
+
+    /// <summary>
     /// 渲染为 XML
     /// </summary>
     public XElement ToXml()
@@ -39,8 +44,22 @@ public class ActionDefinition
             action.Add(new XAttribute("params", paramsStr));
         }
 
+        if (Mode == ActionExecutionMode.Async)
+        {
+            action.Add(new XAttribute("mode", "async"));
+        }
+
         return action;
     }
+}
+
+/// <summary>
+/// 操作执行模式
+/// </summary>
+public enum ActionExecutionMode
+{
+    Sync,
+    Async
 }
 
 /// <summary>

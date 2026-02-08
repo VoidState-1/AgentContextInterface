@@ -64,6 +64,7 @@ public class InteractionController
         ActionResult? lastActionResult = null;
         string lastResponseContent = "";
         var totalUsage = new TokenUsage();
+        var steps = new List<InteractionStep>();
 
         // Auto-loop: execute tool_call responses until the model returns
         // a normal response without tool_call.
@@ -89,15 +90,37 @@ public class InteractionController
                 Content = lastResponseContent
             });
 
-            var parsedAction = ActionParser.Parse(lastResponseContent);
-            if (parsedAction == null)
+            var parsedActionBatch = ActionParser.Parse(lastResponseContent);
+            if (parsedActionBatch == null)
             {
                 PruneContext();
-                return InteractionResult.Ok(lastResponseContent, lastAction, lastActionResult, totalUsage);
+                return InteractionResult.Ok(lastResponseContent, lastAction, lastActionResult, totalUsage, steps);
             }
 
-            lastAction = parsedAction;
-            lastActionResult = await ExecuteActionAsync(parsedAction);
+            for (var i = 0; i < parsedActionBatch.Calls.Count; i++)
+            {
+                var parsedAction = parsedActionBatch.Calls[i];
+                var mode = ResolveActionMode(parsedAction.WindowId, parsedAction.ActionId);
+                var callId = $"call_{turn + 1}_{i + 1}";
+                var actionResult = await ExecuteActionAsync(parsedAction);
+
+                lastAction = parsedAction;
+                lastActionResult = actionResult;
+
+                steps.Add(new InteractionStep
+                {
+                    CallId = callId,
+                    WindowId = parsedAction.WindowId,
+                    ActionId = parsedAction.ActionId,
+                    ResolvedMode = mode == ActionExecutionMode.Async ? "async" : "sync",
+                    Success = actionResult.Success,
+                    Message = actionResult.Message,
+                    Summary = actionResult.Summary,
+                    TaskId = TryExtractTaskId(actionResult.Data),
+                    Turn = turn + 1,
+                    Index = i + 1
+                });
+            }
         }
 
         PruneContext();
@@ -122,16 +145,41 @@ public class InteractionController
             Content = assistantOutput
         });
 
-        var action = ActionParser.Parse(assistantOutput);
-        ActionResult? actionResult = null;
-        if (action != null)
+        var parsedActionBatch = ActionParser.Parse(assistantOutput);
+        ParsedAction? lastAction = null;
+        ActionResult? lastActionResult = null;
+        var steps = new List<InteractionStep>();
+        if (parsedActionBatch != null)
         {
-            actionResult = await ExecuteActionAsync(action);
+            for (var i = 0; i < parsedActionBatch.Calls.Count; i++)
+            {
+                var action = parsedActionBatch.Calls[i];
+                var mode = ResolveActionMode(action.WindowId, action.ActionId);
+                var callId = $"call_1_{i + 1}";
+                var actionResult = await ExecuteActionAsync(action);
+
+                lastAction = action;
+                lastActionResult = actionResult;
+
+                steps.Add(new InteractionStep
+                {
+                    CallId = callId,
+                    WindowId = action.WindowId,
+                    ActionId = action.ActionId,
+                    ResolvedMode = mode == ActionExecutionMode.Async ? "async" : "sync",
+                    Success = actionResult.Success,
+                    Message = actionResult.Message,
+                    Summary = actionResult.Summary,
+                    TaskId = TryExtractTaskId(actionResult.Data),
+                    Turn = 1,
+                    Index = i + 1
+                });
+            }
         }
 
         PruneContext();
 
-        return InteractionResult.Ok(assistantOutput, action, actionResult);
+        return InteractionResult.Ok(assistantOutput, lastAction, lastActionResult, steps: steps);
     }
 
     /// <summary>
@@ -284,6 +332,43 @@ public class InteractionController
         }
     }
 
+    private static string? TryExtractTaskId(object? data)
+    {
+        if (data == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(data));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("task_id", out var taskIdElement) ||
+                taskIdElement.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return taskIdElement.GetString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private ActionExecutionMode ResolveActionMode(string windowId, string actionId)
+    {
+        if (string.Equals(actionId, "close", StringComparison.OrdinalIgnoreCase))
+        {
+            return ActionExecutionMode.Sync;
+        }
+
+        var window = _windowManager.Get(windowId);
+        var action = window?.Actions.FirstOrDefault(a => string.Equals(a.Id, actionId, StringComparison.Ordinal));
+        return action?.Mode ?? ActionExecutionMode.Sync;
+    }
+
     private static void AccumulateUsage(TokenUsage total, TokenUsage? delta)
     {
         if (delta == null)
@@ -331,10 +416,41 @@ public class InteractionResult
     public ParsedAction? Action { get; init; }
     public ActionResult? ActionResult { get; init; }
     public TokenUsage? Usage { get; init; }
+    public IReadOnlyList<InteractionStep>? Steps { get; init; }
 
-    public static InteractionResult Ok(string response, ParsedAction? action = null, ActionResult? actionResult = null, TokenUsage? usage = null) =>
-        new() { Success = true, Response = response, Action = action, ActionResult = actionResult, Usage = usage };
+    public static InteractionResult Ok(
+        string response,
+        ParsedAction? action = null,
+        ActionResult? actionResult = null,
+        TokenUsage? usage = null,
+        IReadOnlyList<InteractionStep>? steps = null) =>
+        new()
+        {
+            Success = true,
+            Response = response,
+            Action = action,
+            ActionResult = actionResult,
+            Usage = usage,
+            Steps = steps
+        };
 
     public static InteractionResult Fail(string error) =>
         new() { Success = false, Error = error };
+}
+
+/// <summary>
+/// 单次交互内的调用执行步骤
+/// </summary>
+public class InteractionStep
+{
+    public required string CallId { get; init; }
+    public required string WindowId { get; init; }
+    public required string ActionId { get; init; }
+    public required string ResolvedMode { get; init; }
+    public required bool Success { get; init; }
+    public string? Message { get; init; }
+    public string? Summary { get; init; }
+    public string? TaskId { get; init; }
+    public int Turn { get; init; }
+    public int Index { get; init; }
 }

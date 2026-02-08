@@ -14,7 +14,7 @@ public static class ActionParser
     /// <summary>
     /// 解析 AI 响应
     /// </summary>
-    public static ParsedAction? Parse(string content)
+    public static ParsedActionBatch? Parse(string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return null;
 
@@ -30,22 +30,44 @@ public static class ActionParser
             });
 
             if (toolCall == null) return null;
-            if (string.IsNullOrWhiteSpace(toolCall.WindowId) || string.IsNullOrWhiteSpace(toolCall.ActionId))
+            var calls = new List<ParsedAction>();
+            if (toolCall.Calls.Count > 0)
+            {
+                foreach (var call in toolCall.Calls)
+                {
+                    if (string.IsNullOrWhiteSpace(call.WindowId) || string.IsNullOrWhiteSpace(call.ActionId))
+                    {
+                        return null;
+                    }
+
+                    calls.Add(new ParsedAction
+                    {
+                        WindowId = call.WindowId!,
+                        ActionId = call.ActionId!,
+                        Parameters = ReadParams(call.Params)
+                    });
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(toolCall.WindowId) &&
+                     !string.IsNullOrWhiteSpace(toolCall.ActionId))
+            {
+                // 兼容单条结构：{"window_id":"...","action_id":"...","params":{...}}
+                calls.Add(new ParsedAction
+                {
+                    WindowId = toolCall.WindowId!,
+                    ActionId = toolCall.ActionId!,
+                    Parameters = ReadParams(toolCall.Params)
+                });
+            }
+
+            if (calls.Count == 0)
             {
                 return null;
             }
 
-            Dictionary<string, object>? parameters = null;
-            if (toolCall.Params.HasValue && toolCall.Params.Value.ValueKind == JsonValueKind.Object)
+            return new ParsedActionBatch
             {
-                parameters = JsonSerializer.Deserialize<Dictionary<string, object>>(toolCall.Params.Value.GetRawText());
-            }
-
-            return new ParsedAction
-            {
-                WindowId = toolCall.WindowId!,
-                ActionId = toolCall.ActionId!,
-                Parameters = parameters
+                Calls = calls
             };
         }
         catch (JsonException)
@@ -58,6 +80,9 @@ public static class ActionParser
 
     private class ToolActionCall
     {
+        [JsonPropertyName("calls")]
+        public List<ToolActionItem> Calls { get; set; } = [];
+
         [JsonPropertyName("window_id")]
         public string? WindowId { get; set; }
 
@@ -66,5 +91,27 @@ public static class ActionParser
 
         [JsonPropertyName("params")]
         public JsonElement? Params { get; set; }
+    }
+
+    private class ToolActionItem
+    {
+        [JsonPropertyName("window_id")]
+        public string? WindowId { get; set; }
+
+        [JsonPropertyName("action_id")]
+        public string? ActionId { get; set; }
+
+        [JsonPropertyName("params")]
+        public JsonElement? Params { get; set; }
+    }
+
+    private static Dictionary<string, object>? ReadParams(JsonElement? paramsElement)
+    {
+        if (!paramsElement.HasValue || paramsElement.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<Dictionary<string, object>>(paramsElement.Value.GetRawText());
     }
 }

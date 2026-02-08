@@ -5,7 +5,7 @@ namespace ACI.LLM;
 /// </summary>
 public static class PromptBuilder
 {
-    // 仅保留 action 协议：tool_call 直接传 window_id/action_id/params。
+    // tool_call 协议：使用 calls 数组，系统自动处理调用 ID 和执行模式。
     private const string SystemPromptTemplate = """
         # AgentContextInterface System
 
@@ -17,13 +17,18 @@ public static class PromptBuilder
         Use exactly this payload inside `<tool_call>...</tool_call>`:
 
         <tool_call>
-        {"window_id":"xxx","action_id":"yyy","params":{...}}
+        {"calls":[{"window_id":"xxx","action_id":"yyy","params":{...}}]}
         </tool_call>
 
         Field rules:
+        - calls: required array
         - window_id: required, target window id
         - action_id: required, action id exposed by that window
         - params: optional object, action parameters
+
+        Notes:
+        - Do not provide call id; the system assigns it.
+        - Do not provide execution mode; mode is defined by the action metadata.
 
         ## Launcher Rules
 

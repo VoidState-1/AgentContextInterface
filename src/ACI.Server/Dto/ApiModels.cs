@@ -26,6 +26,7 @@ public class InteractionResponse
     public string? Response { get; set; }
     public ActionInfo? Action { get; set; }
     public ActionResultInfo? ActionResult { get; set; }
+    public List<InteractionStepInfo>? Steps { get; set; }
     public TokenUsageInfo? Usage { get; set; }
 }
 
@@ -48,6 +49,23 @@ public class ActionResultInfo
     public bool Success { get; set; }
     public string? Message { get; set; }
     public string? Summary { get; set; }
+}
+
+/// <summary>
+/// 交互执行步骤
+/// </summary>
+public class InteractionStepInfo
+{
+    public required string CallId { get; set; }
+    public required string WindowId { get; set; }
+    public required string ActionId { get; set; }
+    public required string ResolvedMode { get; set; }
+    public bool Success { get; set; }
+    public string? Message { get; set; }
+    public string? Summary { get; set; }
+    public string? TaskId { get; set; }
+    public int Turn { get; set; }
+    public int Index { get; set; }
 }
 
 /// <summary>

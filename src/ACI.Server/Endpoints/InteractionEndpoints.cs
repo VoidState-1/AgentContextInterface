@@ -107,6 +107,19 @@ public static class InteractionEndpoints
                 Message = result.ActionResult.Message,
                 Summary = result.ActionResult.Summary
             } : null,
+            Steps = result.Steps?.Select(step => new InteractionStepInfo
+            {
+                CallId = step.CallId,
+                WindowId = step.WindowId,
+                ActionId = step.ActionId,
+                ResolvedMode = step.ResolvedMode,
+                Success = step.Success,
+                Message = step.Message,
+                Summary = step.Summary,
+                TaskId = step.TaskId,
+                Turn = step.Turn,
+                Index = step.Index
+            }).ToList(),
             Usage = result.Usage != null ? new TokenUsageInfo
             {
                 PromptTokens = result.Usage.PromptTokens,

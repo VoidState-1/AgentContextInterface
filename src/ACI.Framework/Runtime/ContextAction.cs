@@ -29,6 +29,11 @@ public class ContextAction
     public List<ContextParam> Parameters { get; init; } = [];
 
     /// <summary>
+    /// 执行模式（默认同步）
+    /// </summary>
+    public ActionExecutionMode Mode { get; init; } = ActionExecutionMode.Sync;
+
+    /// <summary>
     /// 添加参数（链式调用）
     /// </summary>
     public ContextAction WithParam(string name, ParamType type, bool required = true)
@@ -43,6 +48,21 @@ public class ContextAction
     }
 
     /// <summary>
+    /// 将操作标记为异步执行模式。
+    /// </summary>
+    public ContextAction AsAsync()
+    {
+        return new ContextAction
+        {
+            Id = Id,
+            Label = Label,
+            Handler = Handler,
+            Parameters = [.. Parameters],
+            Mode = ActionExecutionMode.Async
+        };
+    }
+
+    /// <summary>
     /// 转换为 Core 层的 ActionDefinition
     /// </summary>
     public ActionDefinition ToActionDefinition()
@@ -51,6 +71,7 @@ public class ContextAction
         {
             Id = Id,
             Label = Label,
+            Mode = Mode,
             Parameters = Parameters.Select(p => new ParameterDefinition
             {
                 Name = p.Name,
