@@ -158,7 +158,7 @@ ACI同样学习到了这点，在ACI中，**操作与窗口绑定**，只有在�
 
 一方面，它可以充分利用互联网几十年积累下来的资产。
 
-- 众多生产力软件都拥有的检视器inspector可以很轻松的被映射成
+- 众多生产力软件都拥有的检视器inspector可以很轻松的被映射成ACI的窗口
 - 类似OpenClaw的网页快照方案可以让ACI构建出专供AI使用的浏览器
 - 通过集成ACI，可以轻松的将现有的软件改造成近乎AI原生的使用体验
 
@@ -200,7 +200,7 @@ ACI同样学习到了这点，在ACI中，**操作与窗口绑定**，只有在�
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/AgentContextInterface.git
+git clone https://github.com/VoidState-1/AgentContextInterface.git
 cd AgentContextInterface
 
 # 配置 API Key
@@ -224,6 +224,19 @@ curl -X POST http://localhost:5000/api/sessions/{sessionId}/interact \
 
 # 3. 查看窗口
 curl http://localhost:5000/api/sessions/{sessionId}/windows
+```
+
+### 快速方案
+
+使用ACI的官方调试工具Aperture，可以快速的创建一个ACI对话Session。
+
+```bash
+# 克隆项目
+git clone https://github.com/VoidState-1/Aperture.git
+
+# 运行Aperture
+npm install
+npm run dev
 ```
 
 ---
@@ -310,9 +323,12 @@ public class TodoApp : ContextApp
 
 ### 待完善
 
-- [ ] **前端客户端**：当前前端仍处于非常基础的状态，需要大幅优化用户体验
 - [ ] **异步操作支持**：目前窗口操作必须同步返回结果，AI 才能继续响应。缺少对长时间运行任务的支持
 - [ ] **更多内置应用**：需要开发更多实用的示例应用
+- [ ] **更新进的工具解析器**：需要支持更多的工具参数类型
+- [ ] **持久化存储**：需要实现持久化存储，防止数据丢失
+- [ ] **开发者SDK**：需要提供更丰富的API，帮助开发者开发更复杂的应用
+- [ ] **前端客户端**：当前前端仍处于非常基础的状态，需要大幅优化用户体验
 - [ ] **生产环境部署**：安全性、可靠性、可扩展性等方面需要加强
 
 ### 已知限制
@@ -331,11 +347,11 @@ public class TodoApp : ContextApp
 
 ### 贡献方向
 
+- 💡 架构设计讨论和建议
 - 🐛 Bug 修复和问题反馈
+- 🔧 新的内置应用开发
 - 📖 文档改进和翻译
 - 🎨 前端 UI/UX 设计与开发
-- 🔧 新的内置应用开发
-- 💡 架构设计讨论和建议
 
 ---
 

@@ -73,3 +73,6 @@ ehthumbs.db
 *.tmp
 *.temp
 *.log
+
+# tempdoc
+TODO/
