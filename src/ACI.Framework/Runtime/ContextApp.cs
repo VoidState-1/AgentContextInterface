@@ -117,4 +117,31 @@ public abstract class ContextApp
             Context.RequestRefresh(id);
         }
     }
+
+    /// <summary>
+    /// 启动后台任务（不阻塞当前交互）
+    /// </summary>
+    protected string StartBackgroundTask(
+        string windowId,
+        Func<CancellationToken, Task> taskBody,
+        string? taskId = null)
+    {
+        return Context.StartBackgroundTask(windowId, taskBody, taskId);
+    }
+
+    /// <summary>
+    /// 取消后台任务
+    /// </summary>
+    protected bool CancelBackgroundTask(string taskId)
+    {
+        return Context.CancelBackgroundTask(taskId);
+    }
+
+    /// <summary>
+    /// 在会话串行上下文中执行动作（用于后台任务安全回写）
+    /// </summary>
+    protected Task RunOnSessionAsync(Func<Task> action, CancellationToken ct = default)
+    {
+        return Context.RunOnSessionAsync(action, ct);
+    }
 }

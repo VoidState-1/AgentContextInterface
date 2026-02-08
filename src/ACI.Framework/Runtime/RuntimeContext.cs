@@ -1,6 +1,7 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using ACI.Core.Services;
+using System.Threading;
 
 namespace ACI.Framework.Runtime;
 
@@ -17,6 +18,9 @@ public class RuntimeContext : IContext
 
     // 窗口刷新委托（由 FrameworkHost 设置）
     private Action<string>? _refreshHandler;
+    private Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTaskHandler;
+    private Func<string, bool>? _cancelBackgroundTaskHandler;
+    private Func<Func<Task>, CancellationToken, Task>? _runOnSessionHandler;
 
     public RuntimeContext(
         IWindowManager windows,
@@ -46,11 +50,66 @@ public class RuntimeContext : IContext
     }
 
     /// <summary>
+    /// 配置后台任务处理器（由 SessionContext 调用）
+    /// </summary>
+    public void ConfigureBackgroundTaskHandlers(
+        Func<string, Func<CancellationToken, Task>, string?, string> startHandler,
+        Func<string, bool> cancelHandler,
+        Func<Func<Task>, CancellationToken, Task> runOnSessionHandler)
+    {
+        _startBackgroundTaskHandler = startHandler;
+        _cancelBackgroundTaskHandler = cancelHandler;
+        _runOnSessionHandler = runOnSessionHandler;
+    }
+
+    /// <summary>
     /// 请求刷新窗口
     /// </summary>
     public void RequestRefresh(string windowId)
     {
         _refreshHandler?.Invoke(windowId);
+    }
+
+    /// <summary>
+    /// 启动后台任务（立即返回）
+    /// </summary>
+    public string StartBackgroundTask(
+        string windowId,
+        Func<CancellationToken, Task> taskBody,
+        string? taskId = null)
+    {
+        if (_startBackgroundTaskHandler == null)
+        {
+            throw new InvalidOperationException("Background task service is not configured.");
+        }
+
+        return _startBackgroundTaskHandler(windowId, taskBody, taskId);
+    }
+
+    /// <summary>
+    /// 取消后台任务
+    /// </summary>
+    public bool CancelBackgroundTask(string taskId)
+    {
+        if (_cancelBackgroundTaskHandler == null)
+        {
+            return false;
+        }
+
+        return _cancelBackgroundTaskHandler(taskId);
+    }
+
+    /// <summary>
+    /// 回到会话串行上下文执行
+    /// </summary>
+    public Task RunOnSessionAsync(Func<Task> action, CancellationToken ct = default)
+    {
+        if (_runOnSessionHandler == null)
+        {
+            return action();
+        }
+
+        return _runOnSessionHandler(action, ct);
     }
 
     public T? GetService<T>() where T : class

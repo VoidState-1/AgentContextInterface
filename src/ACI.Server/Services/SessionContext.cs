@@ -14,20 +14,36 @@ namespace ACI.Server.Services;
 /// </summary>
 public class SessionContext : IDisposable
 {
+    /// <summary>
+    /// 对话ID信息
+    /// </summary>
     public string SessionId { get; }
     public DateTime CreatedAt { get; }
 
+    /// <summary>
+    /// Core 层服务
+    /// </summary>
     public ISeqClock Clock { get; }
     public IEventBus Events { get; }
     public IWindowManager Windows { get; }
     public IContextManager Context { get; }
 
+    /// <summary>
+    /// Framework 层服务
+    /// </summary>
     public RuntimeContext Runtime { get; }
     public FrameworkHost Host { get; }
 
+    /// <summary>
+    /// LLM 层服务和执行器
+    /// </summary>
     public InteractionController Interaction { get; }
     public ActionExecutor ActionExecutor { get; }
 
+    /// <summary>
+    /// 内部状态
+    /// </summary>
+    private readonly SessionTaskRunner _taskRunner;
     private bool _disposed;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
@@ -40,25 +56,37 @@ public class SessionContext : IDisposable
         ACIOptions options,
         Action<FrameworkHost>? configureApps = null)
     {
+        // 1. 初始化 Session
         SessionId = sessionId;
         CreatedAt = DateTime.UtcNow;
 
+        // 2. 初始化 RenderOptions
         var maxTokens = Math.Max(1000, options.Render.MaxTokens);
         var trimToTokens = options.Render.TrimToTokens <= 0
             ? Math.Max(1, maxTokens / 2)
             : Math.Clamp(options.Render.TrimToTokens, 1, maxTokens);
         var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, trimToTokens);
 
+        // 3. 初始化 Core 层
         Clock = new SeqClock();
         Events = new EventBus();
         Windows = new WindowManager(Clock);
         Context = new ContextManager(Clock);
         Windows.OnChanged += OnWindowChanged;
 
+        // 4. 初始化 framework 层
         Runtime = new RuntimeContext(Windows, Events, Clock, Context);
+        _taskRunner = new SessionTaskRunner();
+        Runtime.ConfigureBackgroundTaskHandlers(
+            (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),
+            taskId => _taskRunner.Cancel(taskId),
+            RunSerializedActionAsync);
+
+        // 5. 初始化服务和执行器
         Host = new FrameworkHost(Runtime);
         ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
+        // 6. 注册内置应用
         RegisterBuiltInApps();
         Host.Start("activity_log");
 
@@ -66,6 +94,7 @@ public class SessionContext : IDisposable
         // 启动器窗口改为会话初始化即常驻。
         Host.Launch("launcher");
 
+        // 7. 初始化 InteractionController
         Interaction = new InteractionController(
             llmBridge,
             Host,
@@ -104,6 +133,35 @@ public class SessionContext : IDisposable
         finally
         {
             _sessionLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 后台任务回写会话状态时，统一回到串行执行上下文。
+    /// </summary>
+    private async Task RunSerializedActionAsync(Func<Task> action, CancellationToken ct = default)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await RunSerializedAsync(async () =>
+            {
+                if (_disposed)
+                {
+                    return true;
+                }
+
+                await action();
+                return true;
+            }, ct);
+        }
+        catch (ObjectDisposedException)
+        {
+            // 会话已释放，忽略后台任务回写。
         }
     }
 
@@ -148,6 +206,7 @@ public class SessionContext : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _taskRunner.Dispose();
         Windows.OnChanged -= OnWindowChanged;
         _sessionLock.Dispose();
         GC.SuppressFinalize(this);
