@@ -132,6 +132,11 @@ public class WindowOptions
     public bool PinInPrompt { get; init; } = false;
 
     /// <summary>
+    /// 是否重要窗口（默认重要）。上下文裁剪会优先移除非重要窗口。
+    /// </summary>
+    public bool Important { get; init; } = true;
+
+    /// <summary>
     /// 刷新模式
     /// </summary>
     public RefreshMode RefreshMode { get; init; } = RefreshMode.InPlace;

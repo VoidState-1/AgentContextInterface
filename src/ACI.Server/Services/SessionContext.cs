@@ -48,7 +48,6 @@ public class SessionContext : IDisposable
             ? Math.Max(1, maxTokens / 2)
             : Math.Clamp(options.Render.TrimToTokens, 1, maxTokens);
         var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, trimToTokens);
-        var maxLogs = Math.Max(10, options.ActivityLog.MaxLogs);
 
         Clock = new SeqClock();
         Events = new EventBus();
@@ -60,7 +59,7 @@ public class SessionContext : IDisposable
         Host = new FrameworkHost(Runtime);
         ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
-        RegisterBuiltInApps(maxLogs);
+        RegisterBuiltInApps();
         Host.Start("activity_log");
 
         configureApps?.Invoke(Host);
@@ -85,10 +84,10 @@ public class SessionContext : IDisposable
     /// <summary>
     /// 注册内置应用。
     /// </summary>
-    private void RegisterBuiltInApps(int maxLogs)
+    private void RegisterBuiltInApps()
     {
         Host.Register(new Framework.BuiltIn.AppLauncher(() => Host.GetApps().ToList()));
-        Host.Register(new Framework.BuiltIn.ActivityLog(maxLogs));
+        Host.Register(new Framework.BuiltIn.ActivityLog());
         Host.Register(new Framework.BuiltIn.FileExplorerApp());
     }
 

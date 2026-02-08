@@ -176,29 +176,37 @@ public class ContextManager : IContextManager
                 .Where(c => c.Item.Type == ContextItemType.User || c.Item.Type == ContextItemType.Assistant)
                 .Sum(c => c.Tokens);
 
-            // 第一阶段：裁剪旧的 User / Assistant
+            // 第一阶段：裁剪旧的 User / Assistant，并优先裁剪非重要窗口
             for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
             {
                 var candidate = candidates[i];
-                if (candidate.Item.Type != ContextItemType.User &&
-                    candidate.Item.Type != ContextItemType.Assistant)
+                if (candidate.Item.Type == ContextItemType.User ||
+                    candidate.Item.Type == ContextItemType.Assistant)
                 {
+                    if (conversationTokens - candidate.Tokens < protectedConversationTokens)
+                    {
+                        continue;
+                    }
+
+                    if (_activeItems.Remove(candidate.Item))
+                    {
+                        totalTokens -= candidate.Tokens;
+                        conversationTokens -= candidate.Tokens;
+                    }
+
                     continue;
                 }
 
-                if (conversationTokens - candidate.Tokens < protectedConversationTokens)
-                {
-                    continue;
-                }
-
-                if (_activeItems.Remove(candidate.Item))
+                if (candidate.Item.Type == ContextItemType.Window &&
+                    !candidate.IsImportant &&
+                    !candidate.PinInPrompt &&
+                    _activeItems.Remove(candidate.Item))
                 {
                     totalTokens -= candidate.Tokens;
-                    conversationTokens -= candidate.Tokens;
                 }
             }
 
-            // 第二阶段：裁剪旧的 Window（PinInPrompt 不裁）
+            // 第二阶段：裁剪旧的重要 Window（PinInPrompt 不裁）
             for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
             {
                 var candidate = candidates[i];
@@ -207,7 +215,7 @@ public class ContextManager : IContextManager
                     continue;
                 }
 
-                if (candidate.PinInPrompt)
+                if (candidate.PinInPrompt || !candidate.IsImportant)
                 {
                     continue;
                 }
@@ -238,7 +246,8 @@ public class ContextManager : IContextManager
                     {
                         Item = item,
                         Tokens = windowTokens,
-                        PinInPrompt = window?.Options.PinInPrompt == true
+                        PinInPrompt = window?.Options.PinInPrompt == true,
+                        IsImportant = window?.Options.Important ?? true
                     };
                 }
 
@@ -248,7 +257,8 @@ public class ContextManager : IContextManager
                 {
                     Item = item,
                     Tokens = contentTokens,
-                    PinInPrompt = false
+                    PinInPrompt = false,
+                    IsImportant = true
                 };
             })
             .ToList();
@@ -269,6 +279,7 @@ public class ContextManager : IContextManager
         public required ContextItem Item { get; init; }
         public required int Tokens { get; init; }
         public bool PinInPrompt { get; init; }
+        public bool IsImportant { get; init; }
     }
 }
 

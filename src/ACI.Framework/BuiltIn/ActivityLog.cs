@@ -13,14 +13,12 @@ namespace ACI.Framework.BuiltIn;
 public class ActivityLog : ContextApp
 {
     private readonly List<LogItem> _logs = [];
-    private readonly int _maxLogs;
     private int _windowCounter = 0;
     private IDisposable? _actionSub;
     private IDisposable? _appSub;
 
-    public ActivityLog(int maxLogs = 50)
+    public ActivityLog()
     {
-        _maxLogs = Math.Max(10, maxLogs);
     }
 
     public override string Name => "activity_log";
@@ -67,16 +65,18 @@ public class ActivityLog : ContextApp
         AddLogWindow(evt.Seq, text);
     }
 
-    private void AddLogWindow(int seq, string text)
+    private void AddLogWindow(int seq, string text, bool isPersistent = false)
     {
         var windowId = $"log_{++_windowCounter}";
 
-        _logs.Add(new LogItem
+        var logItem = new LogItem
         {
             Seq = seq,
             WindowId = windowId,
-            Text = text
-        });
+            Text = text,
+            IsPersistent = isPersistent
+        };
+        _logs.Add(logItem);
 
         // 创建精简窗口
         var window = new Window
@@ -86,7 +86,9 @@ public class ActivityLog : ContextApp
             Options = new WindowOptions
             {
                 RenderMode = RenderMode.Compact,
-                Closable = false
+                Closable = false,
+                // 非持久日志默认视为不重要窗口，优先被上下文裁剪。
+                Important = logItem.IsPersistent
             },
             AppName = Name
         };
@@ -95,25 +97,6 @@ public class ActivityLog : ContextApp
 
         Context.Windows.Add(window);
         RegisterWindow(windowId);
-
-        // 检查是否需要压缩
-        CompactIfNeeded();
-    }
-
-    /// <summary>
-    /// 压缩日志（移除旧的非持久日志）
-    /// </summary>
-    private void CompactIfNeeded()
-    {
-        while (_logs.Count > _maxLogs)
-        {
-            var oldest = _logs.FirstOrDefault(l => !l.IsPersistent);
-            if (oldest == null) break;
-
-            _logs.Remove(oldest);
-            Context.Windows.Remove(oldest.WindowId);
-            UnregisterWindow(oldest.WindowId);
-        }
     }
 
     public override ContextWindow CreateWindow(string? intent)

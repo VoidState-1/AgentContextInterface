@@ -19,11 +19,6 @@ public class ACIOptions
     /// 上下文存储配置
     /// </summary>
     public ContextStorageOptions Context { get; set; } = new();
-
-    /// <summary>
-    /// 活动日志配置
-    /// </summary>
-    public ActivityLogOptions ActivityLog { get; set; } = new();
 }
 
 public class ContextRenderOptions
@@ -50,12 +45,4 @@ public class ContextStorageOptions
     /// 对话项最大保留数量（仅 User/Assistant）
     /// </summary>
     public int MaxItems { get; set; } = 100;
-}
-
-public class ActivityLogOptions
-{
-    /// <summary>
-    /// 活动日志窗口最大数量
-    /// </summary>
-    public int MaxLogs { get; set; } = 50;
 }
