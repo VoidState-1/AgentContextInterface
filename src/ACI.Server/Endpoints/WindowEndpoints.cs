@@ -35,13 +35,7 @@ public static class WindowEndpoints
                     {
                         a.Id,
                         a.Label,
-                        Parameters = a.Parameters.Select(p => new
-                        {
-                            p.Name,
-                            p.Type,
-                            p.Required,
-                            p.Default
-                        })
+                        ParamSchema = a.ParamsSchema
                     })
                 });
 
@@ -75,13 +69,7 @@ public static class WindowEndpoints
                 {
                     a.Id,
                     a.Label,
-                    Parameters = a.Parameters.Select(p => new
-                    {
-                        p.Name,
-                        p.Type,
-                        p.Required,
-                        p.Default
-                    })
+                    ParamSchema = a.ParamsSchema
                 })
             });
         });

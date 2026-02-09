@@ -18,9 +18,9 @@ public class ActionDefinition
     public required string Label { get; init; }
 
     /// <summary>
-    /// 参数定义列表
+    /// Parameter schema (JSON-like).
     /// </summary>
-    public List<ParameterDefinition> Parameters { get; init; } = [];
+    public ActionParamSchema? ParamsSchema { get; init; }
 
     /// <summary>
     /// 执行模式（默认同步）
@@ -37,11 +37,9 @@ public class ActionDefinition
             Label
         );
 
-        if (Parameters.Count > 0)
+        if (ParamsSchema != null)
         {
-            var paramsStr = string.Join(", ",
-                Parameters.Select(p => $"{p.Name}:{p.Type}" + (p.Required ? "" : "?")));
-            action.Add(new XAttribute("params", paramsStr));
+            action.Add(new XAttribute("params", ParamsSchema.ToPromptSignature()));
         }
 
         if (Mode == ActionExecutionMode.Async)
@@ -62,28 +60,3 @@ public enum ActionExecutionMode
     Async
 }
 
-/// <summary>
-/// 参数定义
-/// </summary>
-public class ParameterDefinition
-{
-    /// <summary>
-    /// 参数名称
-    /// </summary>
-    public required string Name { get; init; }
-
-    /// <summary>
-    /// 参数类型（string, int, bool）
-    /// </summary>
-    public required string Type { get; init; }
-
-    /// <summary>
-    /// 是否必需
-    /// </summary>
-    public bool Required { get; init; } = true;
-
-    /// <summary>
-    /// 默认值
-    /// </summary>
-    public object? Default { get; init; }
-}

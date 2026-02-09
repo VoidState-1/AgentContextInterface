@@ -1,5 +1,6 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
+using System.Text.Json;
 
 namespace ACI.Framework.Runtime;
 
@@ -27,6 +28,8 @@ public class ContextAction
     /// 参数列表
     /// </summary>
     public List<ContextParam> Parameters { get; init; } = [];
+
+    public ActionParamSchema? ParamsSchema { get; init; }
 
     /// <summary>
     /// 执行模式（默认同步）
@@ -58,6 +61,7 @@ public class ContextAction
             Label = Label,
             Handler = Handler,
             Parameters = [.. Parameters],
+            ParamsSchema = ParamsSchema,
             Mode = ActionExecutionMode.Async
         };
     }
@@ -67,18 +71,44 @@ public class ContextAction
     /// </summary>
     public ActionDefinition ToActionDefinition()
     {
+        var schema = ParamsSchema ?? BuildSchemaFromLegacyParameters();
+
         return new ActionDefinition
         {
             Id = Id,
             Label = Label,
             Mode = Mode,
-            Parameters = Parameters.Select(p => new ParameterDefinition
+            ParamsSchema = schema
+        };
+    }
+
+    private ActionParamSchema? BuildSchemaFromLegacyParameters()
+    {
+        if (Parameters.Count == 0)
+        {
+            return null;
+        }
+
+        var props = Parameters.ToDictionary(
+            p => p.Name,
+            p => new ActionParamSchema
             {
-                Name = p.Name,
-                Type = p.Type.ToString().ToLower(),
+                Kind = p.Type switch
+                {
+                    ParamType.String => ActionParamKind.String,
+                    ParamType.Int => ActionParamKind.Integer,
+                    ParamType.Bool => ActionParamKind.Boolean,
+                    ParamType.Float => ActionParamKind.Number,
+                    _ => ActionParamKind.String
+                },
                 Required = p.Required,
-                Default = p.Default
-            }).ToList()
+                Default = p.Default == null ? null : JsonSerializer.SerializeToElement(p.Default)
+            });
+
+        return new ActionParamSchema
+        {
+            Kind = ActionParamKind.Object,
+            Properties = props
         };
     }
 }

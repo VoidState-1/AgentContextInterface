@@ -143,11 +143,17 @@ public class ActionExecutor
             return "params must be a JSON object";
         }
 
-        foreach (var param in actionDef.Parameters.Where(p => p.Required))
+        var root = actionDef.ParamsSchema;
+        if (root?.Kind != ActionParamKind.Object || root.Properties == null)
         {
-            if (!parameters.HasValue || !parameters.Value.TryGetProperty(param.Name, out _))
+            return null;
+        }
+
+        foreach (var param in root.Properties.Where(p => p.Value.Required))
+        {
+            if (!parameters.HasValue || !parameters.Value.TryGetProperty(param.Key, out _))
             {
-                return $"Missing required parameter: {param.Name}";
+                return $"Missing required parameter: {param.Key}";
             }
         }
 
