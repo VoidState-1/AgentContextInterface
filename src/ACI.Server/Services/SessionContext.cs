@@ -167,7 +167,7 @@ public class SessionContext : IDisposable
     }
 
     /// <summary>
-    /// Starts one interaction-driven async action and routes writes through session serialization.
+    /// 启动由交互触发的异步动作，并统一回到会话串行上下文写入状态。
     /// </summary>
     private string StartInteractionBackgroundTask(
         string windowId,

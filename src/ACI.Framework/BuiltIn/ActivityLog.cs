@@ -6,20 +6,36 @@ using ACI.Framework.Runtime;
 namespace ACI.Framework.BuiltIn;
 
 /// <summary>
-/// Built-in activity log app. Subscribes to core events and emits compact log windows.
+/// 内置活动日志应用，订阅核心事件并输出紧凑日志窗口。
 /// </summary>
 public class ActivityLog : ContextApp
 {
+    /// <summary>
+    /// 日志存储状态。
+    /// </summary>
     private readonly List<LogItem> _logs = [];
     private int _windowCounter;
+
+    /// <summary>
+    /// 事件订阅句柄。
+    /// </summary>
     private IDisposable? _actionSub;
     private IDisposable? _appSub;
     private IDisposable? _taskSub;
 
+    /// <summary>
+    /// 应用名称。
+    /// </summary>
     public override string Name => "activity_log";
 
+    /// <summary>
+    /// 应用描述。
+    /// </summary>
     public override string? AppDescription => "System activity log of actions, launches, and background tasks.";
 
+    /// <summary>
+    /// 创建应用时注册事件订阅。
+    /// </summary>
     public override void OnCreate()
     {
         if (_actionSub != null || _appSub != null || _taskSub != null)
@@ -32,6 +48,9 @@ public class ActivityLog : ContextApp
         _taskSub = Context.Events.Subscribe<BackgroundTaskLifecycleEvent>(OnBackgroundTaskLifecycle);
     }
 
+    /// <summary>
+    /// 销毁应用时释放事件订阅。
+    /// </summary>
     public override void OnDestroy()
     {
         _actionSub?.Dispose();
@@ -44,6 +63,9 @@ public class ActivityLog : ContextApp
         _taskSub = null;
     }
 
+    /// <summary>
+    /// 处理动作执行事件。
+    /// </summary>
     private void OnActionExecuted(ActionExecutedEvent evt)
     {
         var result = evt.Success ? "success" : "failed";
@@ -52,6 +74,9 @@ public class ActivityLog : ContextApp
         AddLogWindow(evt.Seq, text);
     }
 
+    /// <summary>
+    /// 处理应用创建事件。
+    /// </summary>
     private void OnAppCreated(AppCreatedEvent evt)
     {
         var target = evt.Target != null ? $", target {evt.Target}" : string.Empty;
@@ -59,6 +84,9 @@ public class ActivityLog : ContextApp
         AddLogWindow(evt.Seq, text);
     }
 
+    /// <summary>
+    /// 处理后台任务生命周期事件。
+    /// </summary>
     private void OnBackgroundTaskLifecycle(BackgroundTaskLifecycleEvent evt)
     {
         var text = $"[{evt.Seq}] task {evt.TaskId} {evt.Status} window={evt.WindowId}";
@@ -75,6 +103,9 @@ public class ActivityLog : ContextApp
         AddLogWindow(evt.Seq, text);
     }
 
+    /// <summary>
+    /// 追加一条日志并创建对应窗口。
+    /// </summary>
     private void AddLogWindow(int seq, string text, bool isPersistent = false)
     {
         var windowId = $"log_{++_windowCounter}";
@@ -107,8 +138,14 @@ public class ActivityLog : ContextApp
         RegisterWindow(windowId);
     }
 
+    /// <summary>
+    /// 创建日志主窗口。
+    /// </summary>
     public override ContextWindow CreateWindow(string? intent)
     {
+        // 1. 构建主窗口内容。
+        // 2. 暴露清理日志与关闭窗口两个动作。
+        // 3. 返回主窗口定义。
         return new ContextWindow
         {
             Id = "activity_log_main",
@@ -151,11 +188,29 @@ public class ActivityLog : ContextApp
         };
     }
 
+    /// <summary>
+    /// 单条日志记录模型。
+    /// </summary>
     private class LogItem
     {
+        /// <summary>
+        /// 事件序号。
+        /// </summary>
         public int Seq { get; init; }
+
+        /// <summary>
+        /// 日志窗口 ID。
+        /// </summary>
         public required string WindowId { get; init; }
+
+        /// <summary>
+        /// 日志文本内容。
+        /// </summary>
         public required string Text { get; init; }
+
+        /// <summary>
+        /// 是否持久化为重要日志。
+        /// </summary>
         public bool IsPersistent { get; init; }
     }
 }

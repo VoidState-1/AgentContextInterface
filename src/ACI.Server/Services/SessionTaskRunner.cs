@@ -5,15 +5,29 @@ using ACI.Core.Services;
 namespace ACI.Server.Services;
 
 /// <summary>
-/// Session-scoped background task runner.
+/// 会话级后台任务运行器。
 /// </summary>
 public sealed class SessionTaskRunner : IDisposable
 {
+    /// <summary>
+    /// 任务状态存储。
+    /// </summary>
     private readonly ConcurrentDictionary<string, RunningTask> _tasks = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 事件发布依赖。
+    /// </summary>
     private readonly IEventBus? _events;
     private readonly ISeqClock? _clock;
+
+    /// <summary>
+    /// 运行器状态。
+    /// </summary>
     private bool _disposed;
 
+    /// <summary>
+    /// 创建会话任务运行器。
+    /// </summary>
     public SessionTaskRunner(IEventBus? events = null, ISeqClock? clock = null)
     {
         _events = events;
@@ -21,7 +35,7 @@ public sealed class SessionTaskRunner : IDisposable
     }
 
     /// <summary>
-    /// Starts a background task and returns immediately with task id.
+    /// 启动后台任务并立即返回任务 ID。
     /// </summary>
     public string Start(
         string windowId,
@@ -29,6 +43,7 @@ public sealed class SessionTaskRunner : IDisposable
         string? taskId = null,
         string? source = null)
     {
+        // 1. 校验运行状态与入参。
         ObjectDisposedException.ThrowIf(_disposed, nameof(SessionTaskRunner));
 
         if (string.IsNullOrWhiteSpace(windowId))
@@ -38,6 +53,7 @@ public sealed class SessionTaskRunner : IDisposable
 
         ArgumentNullException.ThrowIfNull(taskBody);
 
+        // 2. 分配任务 ID 并登记到运行表。
         var resolvedTaskId = string.IsNullOrWhiteSpace(taskId)
             ? $"task_{Guid.NewGuid():N}"
             : taskId;
@@ -50,6 +66,7 @@ public sealed class SessionTaskRunner : IDisposable
 
         PublishLifecycle(resolvedTaskId, windowId, BackgroundTaskStatus.Started, source);
 
+        // 3. 在线程池中执行任务，并记录取消/失败状态。
         record.Work = Task.Run(async () =>
         {
             var canceled = false;
@@ -87,9 +104,13 @@ public sealed class SessionTaskRunner : IDisposable
             }
         });
 
+        // 4. 同步返回任务 ID，避免阻塞主交互流程。
         return resolvedTaskId;
     }
 
+    /// <summary>
+    /// 请求取消指定后台任务。
+    /// </summary>
     public bool Cancel(string taskId)
     {
         if (_disposed || string.IsNullOrWhiteSpace(taskId))
@@ -106,6 +127,9 @@ public sealed class SessionTaskRunner : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// 释放运行器并取消所有未完成任务。
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -120,6 +144,9 @@ public sealed class SessionTaskRunner : IDisposable
         }
     }
 
+    /// <summary>
+    /// 发布后台任务生命周期事件。
+    /// </summary>
     private void PublishLifecycle(
         string taskId,
         string windowId,
@@ -136,15 +163,32 @@ public sealed class SessionTaskRunner : IDisposable
         _events.Publish(new BackgroundTaskLifecycleEvent(seq, taskId, windowId, status, source, message));
     }
 
+    /// <summary>
+    /// 运行中的后台任务记录。
+    /// </summary>
     private sealed class RunningTask
     {
+        /// <summary>
+        /// 创建运行任务记录。
+        /// </summary>
         public RunningTask(string windowId)
         {
             WindowId = windowId;
         }
 
+        /// <summary>
+        /// 关联窗口 ID。
+        /// </summary>
         public string WindowId { get; }
+
+        /// <summary>
+        /// 任务取消令牌源。
+        /// </summary>
         public CancellationTokenSource Cancellation { get; } = new();
+
+        /// <summary>
+        /// 正在执行的任务句柄。
+        /// </summary>
         public Task Work { get; set; } = Task.CompletedTask;
     }
 }

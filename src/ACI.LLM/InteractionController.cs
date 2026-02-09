@@ -9,23 +9,39 @@ using System.Text.Json;
 namespace ACI.LLM;
 
 /// <summary>
-/// Facade for interaction APIs. Loop orchestration is delegated to InteractionOrchestrator.
+/// 交互控制器外观，循环编排由 `InteractionOrchestrator` 负责。
 /// </summary>
 public class InteractionController
 {
+    /// <summary>
+    /// 自动工具调用最大轮次。
+    /// </summary>
     private const int MaxAutoToolCallTurns = 12;
 
+    /// <summary>
+    /// 核心依赖服务。
+    /// </summary>
     private readonly FrameworkHost _host;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
     private readonly ActionExecutor _actionExecutor;
     private readonly Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTask;
+
+    /// <summary>
+    /// 渲染与编排组件。
+    /// </summary>
     private readonly IContextRenderer _renderer;
     private readonly RenderOptions _renderOptions;
     private readonly InteractionOrchestrator _orchestrator;
 
+    /// <summary>
+    /// 内部状态。
+    /// </summary>
     private bool _initialized;
 
+    /// <summary>
+    /// 创建交互控制器。
+    /// </summary>
     public InteractionController(
         ILLMBridge llm,
         FrameworkHost host,
@@ -55,12 +71,21 @@ public class InteractionController
             MaxAutoToolCallTurns);
     }
 
+    /// <summary>
+    /// 处理一条用户消息。
+    /// </summary>
     public Task<InteractionResult> ProcessAsync(string userMessage, CancellationToken ct = default)
         => _orchestrator.ProcessUserMessageAsync(userMessage, ct);
 
+    /// <summary>
+    /// 处理 assistant 输出文本。
+    /// </summary>
     public Task<InteractionResult> ProcessAssistantOutputAsync(string assistantOutput, CancellationToken ct = default)
         => _orchestrator.ProcessAssistantOutputAsync(assistantOutput, ct);
 
+    /// <summary>
+    /// 获取当前发送给 LLM 的消息快照。
+    /// </summary>
     public IReadOnlyList<LlmMessage> GetCurrentLlmInputSnapshot()
     {
         EnsureInitialized();
@@ -69,6 +94,9 @@ public class InteractionController
         return _renderer.Render(activeItems, _windowManager, _renderOptions);
     }
 
+    /// <summary>
+    /// 获取当前 LLM 输入的纯文本格式。
+    /// </summary>
     public string GetCurrentLlmInputRaw()
     {
         var messages = GetCurrentLlmInputSnapshot();
@@ -84,6 +112,9 @@ public class InteractionController
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// 执行窗口动作（允许异步分发）。
+    /// </summary>
     public async Task<ActionResult> ExecuteWindowActionAsync(
         string windowId,
         string actionId,
@@ -97,6 +128,9 @@ public class InteractionController
             CancellationToken.None);
     }
 
+    /// <summary>
+    /// 执行窗口动作内部流程。
+    /// </summary>
     private async Task<ActionResult> ExecuteWindowActionInternalAsync(
         string windowId,
         string actionId,
@@ -104,6 +138,7 @@ public class InteractionController
         bool allowAsyncDispatch,
         CancellationToken ct)
     {
+        // 1. 校验参数并判断是否进入异步分发分支。
         if (string.IsNullOrWhiteSpace(windowId) || string.IsNullOrWhiteSpace(actionId))
         {
             return ActionResult.Fail("action is missing required fields");
@@ -137,6 +172,7 @@ public class InteractionController
                 });
         }
 
+        // 2. 执行动作处理器并处理失败返回。
         ct.ThrowIfCancellationRequested();
 
         var result = await _actionExecutor.ExecuteAsync(windowId, actionId, parameters);
@@ -145,6 +181,7 @@ public class InteractionController
             return result;
         }
 
+        // 3. 仅当返回 launch 指令时追加应用启动流程。
         if (!TryExtractLaunchCommand(result.Data, out var appName, out var target, out var closeSource))
         {
             PruneContext();
@@ -156,6 +193,7 @@ public class InteractionController
             return ActionResult.Fail("launch command missing app name");
         }
 
+        // 4. 执行启动并按需关闭来源窗口，最后裁剪上下文。
         try
         {
             _host.Launch(appName, target);
@@ -181,6 +219,9 @@ public class InteractionController
         }
     }
 
+    /// <summary>
+    /// 执行一次工具调用并生成步骤记录。
+    /// </summary>
     private async Task<ToolCallExecution> ExecuteToolCallAsync(
         ParsedAction action,
         int turn,
@@ -215,6 +256,9 @@ public class InteractionController
         };
     }
 
+    /// <summary>
+    /// 解析动作最终执行模式。
+    /// </summary>
     private ActionExecutionMode ResolveActionMode(string windowId, string actionId)
     {
         if (string.Equals(actionId, "close", StringComparison.OrdinalIgnoreCase))
@@ -227,6 +271,9 @@ public class InteractionController
         return action?.Mode ?? ActionExecutionMode.Sync;
     }
 
+    /// <summary>
+    /// 触发上下文裁剪。
+    /// </summary>
     private void PruneContext()
     {
         _contextManager.Prune(
@@ -236,6 +283,9 @@ public class InteractionController
             _renderOptions.PruneTargetTokens);
     }
 
+    /// <summary>
+    /// 注入系统提示词（仅首次）。
+    /// </summary>
     private void EnsureInitialized()
     {
         if (_initialized)
@@ -253,6 +303,9 @@ public class InteractionController
         _initialized = true;
     }
 
+    /// <summary>
+    /// 从动作返回数据中解析 launch 指令。
+    /// </summary>
     private static bool TryExtractLaunchCommand(
         object? data,
         out string? appName,
@@ -304,6 +357,9 @@ public class InteractionController
         }
     }
 
+    /// <summary>
+    /// 从动作返回数据中提取后台任务 ID。
+    /// </summary>
     private static string? TryExtractTaskId(object? data)
     {
         if (data == null)
@@ -330,16 +386,49 @@ public class InteractionController
     }
 }
 
+/// <summary>
+/// 一次交互请求的返回结果。
+/// </summary>
 public class InteractionResult
 {
+    /// <summary>
+    /// 是否处理成功。
+    /// </summary>
     public bool Success { get; init; }
+
+    /// <summary>
+    /// 失败原因。
+    /// </summary>
     public string? Error { get; init; }
+
+    /// <summary>
+    /// assistant 的最终文本响应。
+    /// </summary>
     public string? Response { get; init; }
+
+    /// <summary>
+    /// 最后一个解析到的动作。
+    /// </summary>
     public ParsedAction? Action { get; init; }
+
+    /// <summary>
+    /// 最后一个动作执行结果。
+    /// </summary>
     public ActionResult? ActionResult { get; init; }
+
+    /// <summary>
+    /// 本次交互累计 Token 使用量。
+    /// </summary>
     public TokenUsage? Usage { get; init; }
+
+    /// <summary>
+    /// 工具调用步骤列表。
+    /// </summary>
     public IReadOnlyList<InteractionStep>? Steps { get; init; }
 
+    /// <summary>
+    /// 创建成功结果。
+    /// </summary>
     public static InteractionResult Ok(
         string response,
         ParsedAction? action = null,
@@ -356,20 +445,65 @@ public class InteractionResult
             Steps = steps
         };
 
+    /// <summary>
+    /// 创建失败结果。
+    /// </summary>
     public static InteractionResult Fail(string error)
         => new() { Success = false, Error = error };
 }
 
+/// <summary>
+/// 单个工具调用的执行步骤记录。
+/// </summary>
 public class InteractionStep
 {
+    /// <summary>
+    /// 调用 ID。
+    /// </summary>
     public required string CallId { get; init; }
+
+    /// <summary>
+    /// 目标窗口 ID。
+    /// </summary>
     public required string WindowId { get; init; }
+
+    /// <summary>
+    /// 动作 ID。
+    /// </summary>
     public required string ActionId { get; init; }
+
+    /// <summary>
+    /// 解析后的执行模式（sync/async）。
+    /// </summary>
     public required string ResolvedMode { get; init; }
+
+    /// <summary>
+    /// 是否执行成功。
+    /// </summary>
     public required bool Success { get; init; }
+
+    /// <summary>
+    /// 执行结果消息。
+    /// </summary>
     public string? Message { get; init; }
+
+    /// <summary>
+    /// 执行摘要。
+    /// </summary>
     public string? Summary { get; init; }
+
+    /// <summary>
+    /// 后台任务 ID（异步动作时存在）。
+    /// </summary>
     public string? TaskId { get; init; }
+
+    /// <summary>
+    /// 所在回合序号（从 1 开始）。
+    /// </summary>
     public int Turn { get; init; }
+
+    /// <summary>
+    /// 回合内调用序号（从 1 开始）。
+    /// </summary>
     public int Index { get; init; }
 }

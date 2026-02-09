@@ -6,27 +6,51 @@ using ACI.LLM.Services;
 
 namespace ACI.LLM;
 
+/// <summary>
+/// 单次工具调用执行结果。
+/// </summary>
 internal sealed class ToolCallExecution
 {
+    /// <summary>
+    /// 解析后的工具调用动作。
+    /// </summary>
     public required ParsedAction Action { get; init; }
+
+    /// <summary>
+    /// 动作执行结果。
+    /// </summary>
     public required ActionResult Result { get; init; }
+
+    /// <summary>
+    /// 用于回传给前端的步骤记录。
+    /// </summary>
     public required InteractionStep Step { get; init; }
 }
 
 /// <summary>
-/// Runs interaction turns and tool-call loops.
+/// 运行交互轮次与工具调用循环。
 /// </summary>
 internal sealed class InteractionOrchestrator
 {
+    /// <summary>
+    /// 核心依赖。
+    /// </summary>
     private readonly ILLMBridge _llm;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
     private readonly IContextRenderer _renderer;
+
+    /// <summary>
+    /// 循环配置与委托。
+    /// </summary>
     private readonly RenderOptions _renderOptions;
     private readonly int _maxAutoToolCallTurns;
     private readonly Action _ensureInitialized;
     private readonly Func<ParsedAction, int, int, CancellationToken, Task<ToolCallExecution>> _executeToolCallAsync;
 
+    /// <summary>
+    /// 创建交互编排器。
+    /// </summary>
     public InteractionOrchestrator(
         ILLMBridge llm,
         IContextManager contextManager,
@@ -47,8 +71,12 @@ internal sealed class InteractionOrchestrator
         _maxAutoToolCallTurns = maxAutoToolCallTurns;
     }
 
+    /// <summary>
+    /// 处理用户输入并驱动自动工具循环。
+    /// </summary>
     public async Task<InteractionResult> ProcessUserMessageAsync(string userMessage, CancellationToken ct = default)
     {
+        // 1. 初始化系统上下文并写入用户输入。
         _ensureInitialized();
 
         _contextManager.Add(new ContextItem
@@ -64,6 +92,7 @@ internal sealed class InteractionOrchestrator
         var totalUsage = new TokenUsage();
         var steps = new List<InteractionStep>();
 
+        // 2. 循环请求 LLM，直到返回非 tool_call 内容或达到轮次上限。
         for (var turn = 0; turn <= _maxAutoToolCallTurns; turn++)
         {
             PruneContext();
@@ -86,6 +115,7 @@ internal sealed class InteractionOrchestrator
                 Content = lastResponseContent
             });
 
+            // 3. 若返回普通文本则结束；若为 tool_call 则顺序执行每个调用。
             var parsedActionBatch = ActionParser.Parse(lastResponseContent);
             if (parsedActionBatch == null)
             {
@@ -104,11 +134,15 @@ internal sealed class InteractionOrchestrator
             }
         }
 
+        // 4. 超过自动循环上限后返回失败，避免无限循环。
         PruneContext();
         return InteractionResult.Fail(
             $"executed {_maxAutoToolCallTurns + 1} consecutive tool_call turns without a non-tool response");
     }
 
+    /// <summary>
+    /// 处理外部注入的 assistant 输出并执行其中的工具调用。
+    /// </summary>
     public async Task<InteractionResult> ProcessAssistantOutputAsync(string assistantOutput, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -143,6 +177,9 @@ internal sealed class InteractionOrchestrator
         return InteractionResult.Ok(assistantOutput, lastAction, lastActionResult, steps: steps);
     }
 
+    /// <summary>
+    /// 调用上下文管理器执行裁剪。
+    /// </summary>
     private void PruneContext()
     {
         _contextManager.Prune(
@@ -152,6 +189,9 @@ internal sealed class InteractionOrchestrator
             _renderOptions.PruneTargetTokens);
     }
 
+    /// <summary>
+    /// 累加 Token 使用量。
+    /// </summary>
     private static void AccumulateUsage(TokenUsage total, TokenUsage? delta)
     {
         if (delta == null)

@@ -4,10 +4,13 @@ using System.Text.Json;
 namespace ACI.Framework.Runtime;
 
 /// <summary>
-/// Builder helpers for action parameter schemas.
+/// 动作参数结构构建辅助类。
 /// </summary>
 public static class Param
 {
+    /// <summary>
+    /// 创建字符串参数结构。
+    /// </summary>
     public static ActionParamSchema String(
         bool required = true,
         string? description = null,
@@ -20,6 +23,9 @@ public static class Param
             Default = ToDefault(defaultValue)
         };
 
+    /// <summary>
+    /// 创建整数参数结构。
+    /// </summary>
     public static ActionParamSchema Integer(
         bool required = true,
         string? description = null,
@@ -32,6 +38,9 @@ public static class Param
             Default = ToDefault(defaultValue)
         };
 
+    /// <summary>
+    /// 创建数值参数结构。
+    /// </summary>
     public static ActionParamSchema Number(
         bool required = true,
         string? description = null,
@@ -44,6 +53,9 @@ public static class Param
             Default = ToDefault(defaultValue)
         };
 
+    /// <summary>
+    /// 创建布尔参数结构。
+    /// </summary>
     public static ActionParamSchema Boolean(
         bool required = true,
         string? description = null,
@@ -56,6 +68,9 @@ public static class Param
             Default = ToDefault(defaultValue)
         };
 
+    /// <summary>
+    /// 创建空值参数结构。
+    /// </summary>
     public static ActionParamSchema Null(
         bool required = true,
         string? description = null)
@@ -66,6 +81,9 @@ public static class Param
             Description = description
         };
 
+    /// <summary>
+    /// 创建数组参数结构。
+    /// </summary>
     public static ActionParamSchema Array(
         ActionParamSchema items,
         bool required = true,
@@ -78,6 +96,9 @@ public static class Param
             Items = items
         };
 
+    /// <summary>
+    /// 创建对象参数结构。
+    /// </summary>
     public static ActionParamSchema Object(
         Dictionary<string, ActionParamSchema> properties,
         bool required = true,
@@ -90,6 +111,9 @@ public static class Param
             Properties = properties
         };
 
+    /// <summary>
+    /// 将默认值转换为 `JsonElement`。
+    /// </summary>
     private static JsonElement? ToDefault(object? defaultValue)
     {
         return defaultValue == null ? null : JsonSerializer.SerializeToElement(defaultValue);

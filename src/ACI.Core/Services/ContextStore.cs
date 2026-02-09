@@ -4,32 +4,54 @@ using ACI.Core.Models;
 namespace ACI.Core.Services;
 
 /// <summary>
-/// Thread-safe context item storage with active + archive views.
+/// 线程安全的上下文存储，维护活跃视图与归档视图。
 /// </summary>
 public class ContextStore
 {
+    /// <summary>
+    /// 上下文数据集合。
+    /// </summary>
     private readonly List<ContextItem> _activeItems = [];
     private readonly List<ContextItem> _archiveItems = [];
     private readonly Dictionary<string, ContextItem> _archiveById = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 基础依赖。
+    /// </summary>
     private readonly ISeqClock _clock;
+
+    /// <summary>
+    /// 并发访问锁。
+    /// </summary>
     private readonly object _lock = new();
 
+    /// <summary>
+    /// 创建上下文存储实例。
+    /// </summary>
     public ContextStore(ISeqClock clock)
     {
         _clock = clock;
     }
 
+    /// <summary>
+    /// 当前时钟序号。
+    /// </summary>
     public int CurrentSeq => _clock.CurrentSeq;
 
+    /// <summary>
+    /// 添加一条上下文记录并写入归档。
+    /// </summary>
     public void Add(ContextItem item)
     {
         lock (_lock)
         {
+            // 1. 分配序号并初始化 Token 估算。
             item.Seq = _clock.Next();
             item.EstimatedTokens = item.Type == ContextItemType.Window
                 ? 0
                 : EstimateTokens(item.Content);
 
+            // 2. 对窗口类条目，先将旧版本标记为过时。
             if (item.Type == ContextItemType.Window)
             {
                 foreach (var old in _activeItems.Where(i =>
@@ -41,12 +63,16 @@ public class ContextStore
                 }
             }
 
+            // 3. 写入活跃集合与归档集合。
             _activeItems.Add(item);
             _archiveItems.Add(item);
             _archiveById[item.Id] = item;
         }
     }
 
+    /// <summary>
+    /// 获取全部条目（包含过时条目）。
+    /// </summary>
     public IReadOnlyList<ContextItem> GetAll()
     {
         lock (_lock)
@@ -55,6 +81,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 获取归档条目（包含被裁剪条目）。
+    /// </summary>
     public IReadOnlyList<ContextItem> GetArchive()
     {
         lock (_lock)
@@ -63,6 +92,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 获取当前活跃条目。
+    /// </summary>
     public IReadOnlyList<ContextItem> GetActive()
     {
         lock (_lock)
@@ -74,6 +106,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 按 ID 获取条目（从归档索引检索）。
+    /// </summary>
     public ContextItem? GetById(string id)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -87,6 +122,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 将指定窗口的活跃上下文全部标记为过时。
+    /// </summary>
     public void MarkWindowObsolete(string windowId)
     {
         lock (_lock)
@@ -100,6 +138,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 获取窗口对应的最新活跃条目。
+    /// </summary>
     public ContextItem? GetWindowItem(string windowId)
     {
         lock (_lock)
@@ -113,6 +154,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 对活跃条目执行裁剪。
+    /// </summary>
     public void Prune(
         ContextPruner pruner,
         IWindowManager windowManager,
@@ -126,6 +170,9 @@ public class ContextStore
         }
     }
 
+    /// <summary>
+    /// 估算文本对应的 Token 数。
+    /// </summary>
     private static int EstimateTokens(string content)
     {
         if (string.IsNullOrEmpty(content))

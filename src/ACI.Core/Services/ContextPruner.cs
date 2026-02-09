@@ -4,17 +4,21 @@ using ACI.Core.Models;
 namespace ACI.Core.Services;
 
 /// <summary>
-/// Applies token-budget pruning policy to active context items.
+/// 按 Token 预算裁剪活跃上下文条目。
 /// </summary>
 public class ContextPruner
 {
+    /// <summary>
+    /// 执行上下文裁剪。
+    /// </summary>
     public void Prune(
         List<ContextItem> activeItems,
         IWindowManager windowManager,
         int maxTokens,
         int minConversationTokens,
-        int trimToTokens)
+        int pruneTargetTokens)
     {
+        // 1. 参数校验与目标 Token 计算。
         if (windowManager == null)
         {
             throw new ArgumentNullException(nameof(windowManager));
@@ -25,11 +29,12 @@ public class ContextPruner
             return;
         }
 
-        var targetTokens = trimToTokens <= 0
+        var targetTokens = pruneTargetTokens <= 0
             ? Math.Max(1, maxTokens / 2)
-            : Math.Clamp(trimToTokens, 1, maxTokens);
+            : Math.Clamp(pruneTargetTokens, 1, maxTokens);
         var protectedConversationTokens = Math.Clamp(minConversationTokens, 0, targetTokens);
 
+        // 2. 构建候选集并计算当前总量。
         var candidates = BuildPruneCandidates(activeItems, windowManager);
         var totalTokens = candidates.Sum(c => c.Tokens);
         if (totalTokens <= maxTokens)
@@ -41,7 +46,7 @@ public class ContextPruner
             .Where(c => c.Item.Type is ContextItemType.User or ContextItemType.Assistant)
             .Sum(c => c.Tokens);
 
-        // Phase 1: prune older User/Assistant first, and non-important windows early.
+        // 3. 第一轮：优先裁剪旧对话，再裁剪非重要窗口。
         for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
         {
             var candidate = candidates[i];
@@ -70,7 +75,7 @@ public class ContextPruner
             }
         }
 
-        // Phase 2: prune older important windows (except pinned windows).
+        // 4. 第二轮：在仍超预算时，继续裁剪旧的重要窗口（跳过固定窗口）。
         for (var i = 0; i < candidates.Count && totalTokens > targetTokens; i++)
         {
             var candidate = candidates[i];
@@ -91,6 +96,9 @@ public class ContextPruner
         }
     }
 
+    /// <summary>
+    /// 生成按时间排序的裁剪候选列表。
+    /// </summary>
     private static List<PruneCandidate> BuildPruneCandidates(
         List<ContextItem> activeItems,
         IWindowManager windowManager)
@@ -129,6 +137,9 @@ public class ContextPruner
             .ToList();
     }
 
+    /// <summary>
+    /// 估算文本对应的 Token 数。
+    /// </summary>
     private static int EstimateTokens(string content)
     {
         if (string.IsNullOrEmpty(content))
@@ -139,11 +150,29 @@ public class ContextPruner
         return (int)Math.Ceiling(content.Length / 2.5);
     }
 
+    /// <summary>
+    /// 裁剪候选条目。
+    /// </summary>
     private class PruneCandidate
     {
+        /// <summary>
+        /// 原始上下文条目。
+        /// </summary>
         public required ContextItem Item { get; init; }
+
+        /// <summary>
+        /// 估算 Token 数。
+        /// </summary>
         public required int Tokens { get; init; }
+
+        /// <summary>
+        /// 是否固定在提示词中不可裁剪。
+        /// </summary>
         public bool PinInPrompt { get; init; }
+
+        /// <summary>
+        /// 是否重要窗口。
+        /// </summary>
         public bool IsImportant { get; init; }
     }
 }
