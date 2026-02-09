@@ -19,6 +19,7 @@ public class InteractionController
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
     private readonly ActionExecutor _actionExecutor;
+    private readonly Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTask;
     private readonly IContextRenderer _renderer;
     private readonly RenderOptions _renderOptions;
     private readonly InteractionOrchestrator _orchestrator;
@@ -32,12 +33,14 @@ public class InteractionController
         IWindowManager windowManager,
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
-        RenderOptions? renderOptions = null)
+        RenderOptions? renderOptions = null,
+        Func<string, Func<CancellationToken, Task>, string?, string>? startBackgroundTask = null)
     {
         _host = host;
         _contextManager = contextManager;
         _windowManager = windowManager;
         _actionExecutor = actionExecutor;
+        _startBackgroundTask = startBackgroundTask;
         _renderer = renderer ?? new ContextRenderer();
         _renderOptions = renderOptions ?? new RenderOptions();
 
@@ -86,10 +89,55 @@ public class InteractionController
         string actionId,
         JsonElement? parameters = null)
     {
+        return await ExecuteWindowActionInternalAsync(
+            windowId,
+            actionId,
+            parameters,
+            allowAsyncDispatch: true,
+            CancellationToken.None);
+    }
+
+    private async Task<ActionResult> ExecuteWindowActionInternalAsync(
+        string windowId,
+        string actionId,
+        JsonElement? parameters,
+        bool allowAsyncDispatch,
+        CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(windowId) || string.IsNullOrWhiteSpace(actionId))
         {
             return ActionResult.Fail("action is missing required fields");
         }
+
+        if (allowAsyncDispatch &&
+            _startBackgroundTask != null &&
+            ResolveActionMode(windowId, actionId) == ActionExecutionMode.Async)
+        {
+            var taskId = _startBackgroundTask(
+                windowId,
+                async token =>
+                {
+                    await ExecuteWindowActionInternalAsync(
+                        windowId,
+                        actionId,
+                        parameters,
+                        allowAsyncDispatch: false,
+                        token);
+                },
+                null);
+
+            return ActionResult.Ok(
+                message: $"async task started: {taskId}",
+                summary: $"start async action {windowId}.{actionId}",
+                shouldRefresh: false,
+                data: new
+                {
+                    task_id = taskId,
+                    status = "running"
+                });
+        }
+
+        ct.ThrowIfCancellationRequested();
 
         var result = await _actionExecutor.ExecuteAsync(windowId, actionId, parameters);
         if (!result.Success)
@@ -114,6 +162,7 @@ public class InteractionController
 
             if (closeSource)
             {
+                ct.ThrowIfCancellationRequested();
                 await _actionExecutor.ExecuteAsync(
                     windowId,
                     "close",

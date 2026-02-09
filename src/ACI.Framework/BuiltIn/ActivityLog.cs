@@ -1,5 +1,4 @@
-using ACI.Core.Abstractions;
-using ACI.Core.Models;
+﻿using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
@@ -7,36 +6,30 @@ using ACI.Framework.Runtime;
 namespace ACI.Framework.BuiltIn;
 
 /// <summary>
-/// 活动日志 - 内置应用
-/// 订阅系统事件，为每个事件创建精简窗口
+/// Built-in activity log app. Subscribes to core events and emits compact log windows.
 /// </summary>
 public class ActivityLog : ContextApp
 {
     private readonly List<LogItem> _logs = [];
-    private int _windowCounter = 0;
+    private int _windowCounter;
     private IDisposable? _actionSub;
     private IDisposable? _appSub;
-
-    public ActivityLog()
-    {
-    }
+    private IDisposable? _taskSub;
 
     public override string Name => "activity_log";
 
-    public override string? AppDescription => "系统活动日志，记录所有操作";
+    public override string? AppDescription => "System activity log of actions, launches, and background tasks.";
 
     public override void OnCreate()
     {
-        if (_actionSub != null || _appSub != null)
+        if (_actionSub != null || _appSub != null || _taskSub != null)
         {
             return;
         }
 
-        // 订阅操作执行事件
         _actionSub = Context.Events.Subscribe<ActionExecutedEvent>(OnActionExecuted);
-
-        // 订阅应用创建事件
         _appSub = Context.Events.Subscribe<AppCreatedEvent>(OnAppCreated);
+        _taskSub = Context.Events.Subscribe<BackgroundTaskLifecycleEvent>(OnBackgroundTaskLifecycle);
     }
 
     public override void OnDestroy()
@@ -46,21 +39,38 @@ public class ActivityLog : ContextApp
 
         _appSub?.Dispose();
         _appSub = null;
+
+        _taskSub?.Dispose();
+        _taskSub = null;
     }
 
     private void OnActionExecuted(ActionExecutedEvent evt)
     {
-        var result = evt.Success ? "成功" : "失败";
-        var summary = evt.Summary != null ? $" ({evt.Summary})" : "";
-        var text = $"[{evt.Seq}] 操作 {evt.WindowId}.{evt.ActionId} -> {result}{summary}";
-
+        var result = evt.Success ? "success" : "failed";
+        var summary = evt.Summary != null ? $" ({evt.Summary})" : string.Empty;
+        var text = $"[{evt.Seq}] action {evt.WindowId}.{evt.ActionId} -> {result}{summary}";
         AddLogWindow(evt.Seq, text);
     }
 
     private void OnAppCreated(AppCreatedEvent evt)
     {
-        var target = evt.Target != null ? $"，目标: {evt.Target}" : "";
-        var text = $"[{evt.Seq}] 打开应用 {evt.AppName}{target}";
+        var target = evt.Target != null ? $", target {evt.Target}" : string.Empty;
+        var text = $"[{evt.Seq}] launch app {evt.AppName}{target}";
+        AddLogWindow(evt.Seq, text);
+    }
+
+    private void OnBackgroundTaskLifecycle(BackgroundTaskLifecycleEvent evt)
+    {
+        var text = $"[{evt.Seq}] task {evt.TaskId} {evt.Status} window={evt.WindowId}";
+        if (!string.IsNullOrWhiteSpace(evt.Source))
+        {
+            text += $" source={evt.Source}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(evt.Message))
+        {
+            text += $" message={evt.Message}";
+        }
 
         AddLogWindow(evt.Seq, text);
     }
@@ -78,7 +88,6 @@ public class ActivityLog : ContextApp
         };
         _logs.Add(logItem);
 
-        // 创建精简窗口
         var window = new Window
         {
             Id = windowId,
@@ -87,7 +96,6 @@ public class ActivityLog : ContextApp
             {
                 RenderMode = RenderMode.Compact,
                 Closable = false,
-                // 非持久日志默认视为不重要窗口，优先被上下文裁剪。
                 Important = logItem.IsPersistent
             },
             AppName = Name
@@ -101,17 +109,16 @@ public class ActivityLog : ContextApp
 
     public override ContextWindow CreateWindow(string? intent)
     {
-        // 日志应用的主窗口可以显示日志统计信息
         return new ContextWindow
         {
             Id = "activity_log_main",
-            Description = new Text("活动日志主窗口。日志条目以精简窗口形式穿插在上下文中。"),
+            Description = new Text("Activity log main window."),
             Content = new VStack
             {
                 Children =
                 [
-                    new Text($"当前日志条目数: {_logs.Count}"),
-                    new Text("日志条目以精简窗口形式显示在上下文中。")
+                    new Text($"Current log entries: {_logs.Count}"),
+                    new Text("Log entries are emitted as compact windows in context.")
                 ]
             },
             Actions =
@@ -119,7 +126,7 @@ public class ActivityLog : ContextApp
                 new ContextAction
                 {
                     Id = "clear",
-                    Label = "清除所有日志",
+                    Label = "Clear Logs",
                     Handler = _ =>
                     {
                         foreach (var log in _logs.ToList())
@@ -127,17 +134,17 @@ public class ActivityLog : ContextApp
                             Context.Windows.Remove(log.WindowId);
                             UnregisterWindow(log.WindowId);
                         }
+
                         _logs.Clear();
                         return Task.FromResult(ActionResult.Ok(
-                            message: "日志已清除",
-                            shouldRefresh: true
-                        ));
+                            message: "Logs cleared",
+                            shouldRefresh: true));
                     }
                 },
                 new ContextAction
                 {
                     Id = "close",
-                    Label = "关闭",
+                    Label = "Close",
                     Handler = _ => Task.FromResult(ActionResult.Close())
                 }
             ]

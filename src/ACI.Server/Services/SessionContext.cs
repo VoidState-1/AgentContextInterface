@@ -76,7 +76,7 @@ public class SessionContext : IDisposable
 
         // 4. 初始化 framework 层
         Runtime = new RuntimeContext(Windows, Events, Clock, Context);
-        _taskRunner = new SessionTaskRunner();
+        _taskRunner = new SessionTaskRunner(Events, Clock);
         Runtime.ConfigureBackgroundTaskHandlers(
             (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),
             taskId => _taskRunner.Cancel(taskId),
@@ -106,7 +106,8 @@ public class SessionContext : IDisposable
                 MaxTokens = maxTokens,
                 MinConversationTokens = minConversationTokens,
                 TrimToTokens = trimToTokens
-            }
+            },
+            startBackgroundTask: StartInteractionBackgroundTask
         );
     }
 
@@ -163,6 +164,21 @@ public class SessionContext : IDisposable
         {
             // 会话已释放，忽略后台任务回写。
         }
+    }
+
+    /// <summary>
+    /// Starts one interaction-driven async action and routes writes through session serialization.
+    /// </summary>
+    private string StartInteractionBackgroundTask(
+        string windowId,
+        Func<CancellationToken, Task> taskBody,
+        string? taskId)
+    {
+        return _taskRunner.Start(
+            windowId,
+            token => RunSerializedActionAsync(() => taskBody(token), token),
+            taskId,
+            source: "interaction_action");
     }
 
     /// <summary>
