@@ -1,323 +1,151 @@
-# Core 模块详解
+# Core 模块详解（最新版）
 
-> Core 模块提供 ACI 的基础设施，包括窗口管理、上下文管理、事件总线和逻辑时钟。
+> 对应代码：`src/ACI.Core`
 
-## 1. 模块概述
+## 1. 模块职责
 
-Core 是整个系统的基石，**零外部依赖**，提供以下核心能力：
+Core 提供四类基础能力：
 
-```mermaid
-graph LR
-    subgraph "Core 模块"
-        WM[WindowManager<br/>窗口管理]
-        CM[ContextManager<br/>上下文管理]
-        EB[EventBus<br/>事件总线]
-        SC[SeqClock<br/>逻辑时钟]
-    end
-    
-    WM --> SC
-    CM --> SC
-```
+1. 窗口生命周期管理（`WindowManager`）
+2. 上下文存储与裁剪（`ContextStore` + `ContextPruner` + `ContextManager`）
+3. 动作执行与参数校验（`ActionExecutor` + `ActionParamValidator`）
+4. 基础设施（`SeqClock` + `EventBus`）
 
-## 2. 逻辑时钟（SeqClock）
+## 2. 核心模型
 
-### 2.1 设计意图
+### 2.1 Window
 
-在分布式系统中，物理时间不可靠。`SeqClock` 提供单调递增的逻辑序列号，用于：
+`Window` 是 LLM 可见的最小操作单元，关键字段如下：
 
-- 确定上下文项的顺序
-- 标记事件发生的时间点
-- 追踪窗口的创建/更新时间
+- `Description` / `Content` / `Actions`
+- `Options`：`Closable`、`PinInPrompt`、`Important`、`RenderMode`、`RefreshMode`
+- `Meta`：`CreatedAt`、`UpdatedAt`、`Tokens`、`Hidden`
 
-### 2.2 接口定义
+`RenderMode`：
 
-```csharp
-public interface ISeqClock
-{
-    /// <summary>
-    /// 当前序列号（只读）
-    /// </summary>
-    int CurrentSeq { get; }
+- `Full`：输出 `meta/description/content/actions`
+- `Compact`：输出紧凑文本（常用于日志窗口）
 
-    /// <summary>
-    /// 获取下一个序列号（副作用：递增）
-    /// </summary>
-    int Next();
-}
-```
+`RefreshMode`：
 
-### 2.3 使用规范
+- `InPlace`：原地更新窗口内容
+- `Append`：刷新时追加新的 `ContextItem(Window)`
 
-| 场景 | 方法 | 说明 |
-|------|------|------|
-| 分配 ContextItem.Seq | `Next()` | 由 ContextManager 统一调用 |
-| 事件时间戳 | `Next()` | 每个事件需要唯一的时间点 |
-| 窗口 CreatedAt/UpdatedAt | `CurrentSeq` 或 `Next()` | 取决于是否需要递增 |
+### 2.2 ActionDefinition 与参数 Schema
 
-## 3. 事件总线（EventBus）
+Action 使用统一 JSON 风格 schema（`ActionParamSchema`）：
 
-### 3.1 设计意图
+- 基础类型：`String/Integer/Number/Boolean/Null`
+- 复合类型：`Object/Array`
+- 可嵌套组合（`Properties` / `Items`）
 
-提供松耦合的事件发布/订阅机制，解耦各模块之间的通信。
+动作执行模式：
 
-### 3.2 接口定义
+- `ActionExecutionMode.Sync`（默认）
+- `ActionExecutionMode.Async`（渲染为 `<action mode="async">`）
 
-```csharp
-public interface IEventBus
-{
-    void Publish<T>(T evt) where T : IEvent;
-    IDisposable Subscribe<T>(Action<T> handler) where T : IEvent;
-}
+### 2.3 ContextItem
 
-public interface IEvent { }
-```
+上下文条目类型：
 
-### 3.3 内置事件类型
+- `System`
+- `User`
+- `Assistant`
+- `Window`（内容存 `windowId`，渲染时动态取窗口）
 
-```mermaid
-classDiagram
-    class IEvent {
-        <<interface>>
-    }
-    
-    class WindowChangedEvent {
-        +WindowEventType Type
-        +string WindowId
-        +Window Window
-    }
-    
-    class AppCreatedEvent {
-        +int Seq
-        +string AppName
-        +string WindowId
-    }
-    
-    class ActionExecutedEvent {
-        +int Seq
-        +string WindowId
-        +string ActionId
-        +ActionResult Result
-    }
-    
-    IEvent <|-- WindowChangedEvent
-    IEvent <|-- AppCreatedEvent
-    IEvent <|-- ActionExecutedEvent
-```
+附加字段：
 
-## 4. 窗口管理（WindowManager）
+- `Seq`：逻辑时钟序号
+- `IsObsolete`：窗口关闭后的过时标记
+- `EstimatedTokens`：估算 token 缓存
 
-### 4.1 设计意图
+## 3. 上下文管理（Store + Pruner）
 
-集中管理所有活跃窗口的生命周期，提供窗口的 CRUD 操作和变更通知。
+### 3.1 组件拆分
 
-### 4.2 接口定义
+- `ContextStore`：线程安全存储
+  - 活跃集合：`_activeItems`
+  - 归档集合：`_archiveItems`
+  - ID 索引：`_archiveById`
+- `ContextPruner`：只负责裁剪策略
+- `ContextManager`：外观层，组合 Store 与 Pruner
 
-```csharp
-public interface IWindowManager
-{
-    Window? Get(string id);
-    IEnumerable<Window> GetAll();
-    IEnumerable<Window> GetAllOrdered();
-    void Add(Window window);
-    void Remove(string id);
-    void NotifyUpdated(string id);
-    event Action<WindowChangedEvent>? OnChanged;
-}
-```
+### 3.2 活跃与归档
 
-### 4.3 窗口模型
+- `GetActive()`：返回当前参与渲染的上下文（过滤 `IsObsolete`）
+- `GetArchive()`：返回全量历史（包含被裁剪条目）
+- 裁剪会真实删除活跃条目，但不删除归档备份
 
-```mermaid
-classDiagram
-    class Window {
-        +string Id
-        +IRenderable Description
-        +IRenderable Content
-        +List~ActionDefinition~ Actions
-        +WindowOptions Options
-        +WindowMeta Meta
-        +IActionHandler Handler
-        +string AppName
-        +Render() string
-    }
-    
-    class WindowOptions {
-        +bool IsCompact
-        +bool HideActions
-        +bool HideDescription
-    }
-    
-    class WindowMeta {
-        +int CreatedAt
-        +int UpdatedAt
-    }
-    
-    Window --> WindowOptions
-    Window --> WindowMeta
-```
+### 3.3 裁剪策略（当前实现）
 
-### 4.4 渲染模式
+输入参数：
 
-窗口支持两种渲染模式：
+- `maxTokens`
+- `minConversationTokens`
+- `pruneTargetTokens`
 
-| 模式 | 用途 | 输出结构 |
-|------|------|----------|
-| **标准模式** | 常规交互 | Description + Content + Actions |
-| **精简模式** | 日志/状态显示 | 仅 Content |
+执行两阶段裁剪：
 
-```xml
-<!-- 标准模式 -->
-<Window id="todo_list">
-  <Description>待办事项列表，支持增删改查</Description>
-  <Content>
-    <item id="1">买菜</item>
-    <item id="2">写代码</item>
-  </Content>
-  <Actions>
-    <action id="add">添加条目</action>
-    <action id="delete">删除条目</action>
-  </Actions>
-</Window>
+1. 优先裁剪旧 `User/Assistant`，同时优先裁剪非重要窗口（`Important=false`）
+2. 仍超预算时，再裁剪旧的重要窗口（跳过 `PinInPrompt=true`）
 
-<!-- 精简模式 -->
-<Window id="activity_log">
-  [10] 用户打开了 TodoApp
-  [11] AI 添加了条目 "买菜"
-</Window>
-```
+## 4. 动作执行
 
-## 5. 上下文管理（ContextManager）
+`ActionExecutor.ExecuteAsync(windowId, actionId, params)` 的流程：
 
-### 5.1 设计意图
+1. 校验窗口与 action 是否存在
+2. 用 `ActionParamValidator` 校验参数
+3. 执行 `IActionHandler`
+4. 发布 `ActionExecutedEvent`
+5. 按结果执行窗口关闭或刷新
 
-管理对话历史，维护上下文项的有序列表，支持按 `Seq` 排序和过期标记。
+保留动作：
 
-### 5.2 接口定义
+- `close` 为系统保留动作，受 `window.Options.Closable` 约束
 
-```csharp
-public interface IContextManager
-{
-    int CurrentSeq { get; }
-    void Add(ContextItem item);
-    IReadOnlyList<ContextItem> GetAll();
-    IReadOnlyList<ContextItem> GetActive();
-    void MarkWindowObsolete(string windowId);
-}
-```
+## 5. 事件体系
 
-### 5.3 上下文项模型
+Core 中常见事件：
 
-```mermaid
-classDiagram
-    class ContextItem {
-        +string Id
-        +ContextItemType Type
-        +string Content
-        +int Seq
-        +bool IsObsolete
-    }
-    
-    class ContextItemType {
-        <<enumeration>>
-        System
-        User
-        Assistant
-        Window
-    }
-    
-    ContextItem --> ContextItemType
-```
+- `WindowChangedEvent`（`Created/Updated/Removed`）
+- `ActionExecutedEvent`
+- `AppCreatedEvent`
+- `BackgroundTaskLifecycleEvent`（`Started/Completed/Failed/Canceled`）
 
-### 5.4 核心特性
+## 6. 逻辑时钟
 
-#### Seq 统一分配
+`SeqClock` 提供单调递增序号，用于：
 
-```csharp
-public void Add(ContextItem item)
-{
-    item.Seq = _clock.Next();  // 由 ContextManager 统一分配
-    _items.Add(item);
-}
-```
-
-#### 过期标记
-
-窗口关闭时，对应的 `ContextItem` 被标记为过期：
-
-```csharp
-public void MarkWindowObsolete(string windowId)
-{
-    foreach (var item in _items.Where(i => 
-        i.Type == ContextItemType.Window && 
-        i.Content == windowId))
-    {
-        item.IsObsolete = true;
-    }
-}
-```
-
-## 6. 操作处理（ActionHandler）
-
-### 6.1 接口定义
-
-```csharp
-public interface IActionHandler
-{
-    Task<ActionResult> ExecuteAsync(ActionContext context);
-}
-
-public sealed class ActionContext
-{
-    public required Window Window { get; init; }
-    public required string ActionId { get; init; }
-    public Dictionary<string, object>? Parameters { get; init; }
-    
-    public string? GetString(string name);
-    public int? GetInt(string name);
-    public bool GetBool(string name, bool defaultValue = false);
-}
-```
-
-### 6.2 ActionResult
-
-```mermaid
-classDiagram
-    class ActionResult {
-        +bool Success
-        +string Message
-        +string Summary
-        +bool ShouldRefresh
-        +bool ShouldClose
-        +object Data
-        +int LogSeq
-        +Ok() ActionResult
-        +Fail(message) ActionResult
-        +Close(summary) ActionResult
-    }
-```
+- `ContextItem.Seq`
+- 事件 `Seq`
+- `Window.Meta.CreatedAt/UpdatedAt`
 
 ## 7. 目录结构
 
-```
+```text
 ACI.Core/
-├── Abstractions/
-│   ├── ISeqClock.cs
-│   ├── IEventBus.cs
-│   ├── IWindowManager.cs
-│   ├── IContextManager.cs
-│   ├── IActionHandler.cs
-│   └── IRenderable.cs
-│
-├── Models/
-│   ├── Window.cs
-│   ├── ActionDefinition.cs
-│   ├── ActionResult.cs
-│   └── ContextItem.cs
-│
-└── Services/
-    ├── SeqClock.cs
-    ├── EventBus.cs
-    ├── WindowManager.cs
-    ├── ContextManager.cs
-    └── ContextRenderer.cs
+  Abstractions/
+    IActionHandler.cs
+    IContextManager.cs
+    IEventBus.cs
+    IRenderable.cs
+    ISeqClock.cs
+    IWindowManager.cs
+  Models/
+    ActionDefinition.cs
+    ActionParamSchema.cs
+    ActionResult.cs
+    ContextItem.cs
+    Window.cs
+  Services/
+    ActionExecutor.cs
+    ActionParamValidator.cs
+    BackgroundTaskEvents.cs
+    ContextManager.cs
+    ContextPruner.cs
+    ContextRenderer.cs
+    ContextStore.cs
+    EventBus.cs
+    SeqClock.cs
+    WindowManager.cs
 ```

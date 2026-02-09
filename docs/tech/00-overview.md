@@ -1,210 +1,122 @@
-# ACI 系统架构总览
+# ACI 系统架构总览（最新版）
 
-> 本文档描述 ACI 后端系统的整体架构设计。
+> 本文档描述当前后端实现（`src/`）的实际架构与交互协议。
 
-## 1. 系统简介
+## 1. 系统定位
 
-ACI 是一个基于**窗口式交互**的 AI 应用框架。它将传统的 AI 对话转换为可操作的 UI 窗口，让 AI 能够通过结构化的操作与用户协作完成任务。
+ACI（AgentContextInterface）是一个窗口化 AI 交互系统：
 
-### 核心理念
+- AI 不直接“调用应用名创建窗口”，而是对**当前可见窗口**执行 action。
+- 应用启动统一通过常驻 `launcher` 窗口的 `open` 操作完成。
+- AI 输出 `<tool_call>` 后，系统会自动进入工具循环，直到模型返回非工具文本。
 
-```
-传统对话模式：  User → AI → Text Response
-ACI：     User → AI → Window Operations → Structured Feedback
-```
-
-## 2. 架构分层
+## 2. 分层架构
 
 ```mermaid
 graph TB
-    subgraph "Server 层"
-        API[REST API]
-        Hub[SignalR Hub]
+    subgraph "Server"
+        EP[Minimal API Endpoints]
+        HUB[SignalR Hub]
         SM[SessionManager]
+        SC[SessionContext]
     end
-    
-    subgraph "LLM 层"
-        IC[InteractionController]
-        LLM[LLMBridge]
-        Parser[ActionParser]
+
+    subgraph "LLM"
+        IOC[InteractionController]
+        IOR[InteractionOrchestrator]
+        PARSER[ActionParser]
+        BRIDGE[ILLMBridge/OpenRouterClient]
     end
-    
-    subgraph "Framework 层"
+
+    subgraph "Framework"
         FH[FrameworkHost]
-        Apps[ContextApp]
-        Runtime[RuntimeContext]
+        RC[RuntimeContext]
+        APP[ContextApp]
     end
-    
-    subgraph "Core 层"
+
+    subgraph "Core"
         WM[WindowManager]
         CM[ContextManager]
-        EB[EventBus]
-        Clock[SeqClock]
+        STORE[ContextStore]
+        PRUNER[ContextPruner]
+        BUS[EventBus]
+        CLK[SeqClock]
     end
-    
-    API --> SM
-    Hub --> SM
-    SM --> IC
-    IC --> LLM
-    IC --> Parser
-    IC --> FH
-    FH --> Apps
-    FH --> Runtime
-    Runtime --> WM
-    Runtime --> CM
-    Runtime --> EB
-    Runtime --> Clock
+
+    EP --> SM
+    HUB --> SM
+    SM --> SC
+    SC --> IOC
+    IOC --> IOR
+    IOR --> PARSER
+    IOR --> BRIDGE
+    SC --> FH
+    FH --> APP
+    RC --> WM
+    RC --> CM
+    CM --> STORE
+    STORE --> PRUNER
+    RC --> BUS
+    RC --> CLK
 ```
 
-## 3. 模块职责
+## 3. 当前协议要点
 
-| 模块 | 职责 | 依赖 |
-|------|------|------|
-| **Core** | 基础设施：窗口管理、上下文管理、事件总线、逻辑时钟 | 无 |
-| **Framework** | 应用框架：应用生命周期、窗口创建、操作执行 | Core |
-| **LLM** | AI 交互：LLM 调用、响应解析、上下文渲染 | Core, Framework |
-| **Server** | HTTP 服务：会话管理、REST API、实时通信 | Core, Framework, LLM |
+### 3.1 Tool Call 协议（推荐）
 
-## 4. 核心概念
-
-### 4.1 窗口（Window）
-
-窗口是 ACI 的核心交互单元。每个窗口包含：
-
-- **描述（Description）**：告诉 AI 这是什么、怎么操作
-- **内容（Content）**：当前状态的结构化展示
-- **操作（Actions）**：AI 可以执行的操作列表
-
-```mermaid
-classDiagram
-    class Window {
-        +string Id
-        +IRenderable Description
-        +IRenderable Content
-        +List~ActionDefinition~ Actions
-        +WindowMeta Meta
-        +IActionHandler Handler
-        +Render() string
-    }
-    
-    class ActionDefinition {
-        +string Id
-        +string Label
-        +List~ParameterDefinition~ Parameters
-    }
-    
-    Window "1" --> "*" ActionDefinition
+```xml
+<tool_call>
+{"calls":[{"window_id":"xxx","action_id":"yyy","params":{"k":"v"}}]}
+</tool_call>
 ```
 
-### 4.2 上下文项（ContextItem）
+- `calls`：必填数组，可一次批量调用多个 action。
+- `window_id` / `action_id`：必填。
+- `params`：可选对象。
+- `call_id` 不由模型提供，系统自动分配。
+- 执行模式不由模型提供，来自窗口 action 元数据（`mode="async"` 或默认同步）。
 
-对话历史中的每一条记录，按 `Seq` 排序。
+### 3.2 启动应用方式
 
-```mermaid
-classDiagram
-    class ContextItem {
-        +string Id
-        +ContextItemType Type
-        +string Content
-        +int Seq
-        +bool IsObsolete
-    }
-    
-    class ContextItemType {
-        <<enumeration>>
-        System
-        User
-        Assistant
-        Window
-    }
-```
+- `launcher` 窗口会在会话初始化时自动创建，且不可关闭、`PinInPrompt=true`。
+- 启动应用通过 `launcher.open` action（返回 `data.action="launch"`），由 `InteractionController` 统一落地 `Host.Launch(...)`。
 
-### 4.3 应用（ContextApp）
+## 4. 模块职责
 
-封装了特定功能的独立单元，负责创建窗口并处理操作。
-
-```mermaid
-classDiagram
-    class ContextApp {
-        +string Name
-        +string AppDescription
-        +string[] Tags
-        +Initialize(IContext)
-        +CanHandle(intent) bool
-        +CreateWindow(intent) ContextWindow
-        +RefreshWindow(windowId) ContextWindow
-    }
-```
-
-## 5. 数据流概览
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Server
-    participant LLM as LLM Module
-    participant Framework
-    participant Core
-    
-    User->>Server: POST /interact {message}
-    Server->>LLM: ProcessAsync(message)
-    LLM->>Core: Add(UserMessage)
-    LLM->>Core: Render Context
-    LLM->>LLM: Call OpenRouter
-    LLM->>Core: Add(AssistantMessage)
-    LLM->>LLM: Parse Action
-    
-    alt Action = create
-        LLM->>Framework: Launch(appName)
-        Framework->>Core: Add Window
-        LLM->>Core: Add(WindowItem)
-    else Action = action
-        LLM->>Framework: Execute Action
-        Framework->>Core: Update Window
-    end
-    
-    LLM-->>Server: InteractionResult
-    Server-->>User: Response + Windows
-```
-
-## 6. 项目结构
-
-```
-backend.v2/
-├── src/
-│   ├── ACI.Core/           # 核心基础设施
-│   │   ├── Abstractions/         # 接口定义
-│   │   ├── Models/               # 数据模型
-│   │   └── Services/             # 服务实现
-│   │
-│   ├── ACI.Framework/      # 应用框架
-│   │   ├── Runtime/              # 运行时组件
-│   │   ├── Components/           # UI 组件
-│   │   └── BuiltIn/              # 内置应用
-│   │
-│   ├── ACI.LLM/            # LLM 集成
-│   │   ├── Abstractions/         # 接口定义
-│   │   └── Services/             # 服务实现
-│   │
-│   └── ACI.Server/         # HTTP 服务
-│       ├── Endpoints/            # API 端点
-│       ├── Hubs/                 # SignalR Hub
-│       ├── Services/             # 服务层
-│       └── Dto/                  # 数据传输对象
-│
-├── tests/                        # 测试项目
-└── docs/                         # 文档
-```
-
-## 7. 文档索引
-
-| 文档 | 说明 |
+| 模块 | 职责 |
 |------|------|
-| [01-core-module.md](./01-core-module.md) | Core 模块详解 |
-| [02-framework-module.md](./02-framework-module.md) | Framework 模块详解 |
-| [03-llm-module.md](./03-llm-module.md) | LLM 模块详解 |
-| [04-server-module.md](./04-server-module.md) | Server 模块详解 |
-| [05-data-flow.md](./05-data-flow.md) | 数据流与生命周期 |
-| [06-context-management.md](./06-context-management.md) | 上下文管理详解 |
-| [07-api-reference.md](./07-api-reference.md) | API 参考 |
-| [08-app-development.md](./08-app-development.md) | 应用开发指南 |
+| `ACI.Core` | 窗口生命周期、上下文存储/裁剪、事件总线、逻辑时钟、动作执行与参数校验 |
+| `ACI.Framework` | 应用模型与运行时、应用注册启动、窗口刷新、内置应用 |
+| `ACI.LLM` | 系统提示词、tool_call 解析、交互循环编排、LLM 调用 |
+| `ACI.Server` | 会话容器、HTTP/SignalR 对外接口、序列化执行与后台任务接线 |
+
+## 5. 项目目录
+
+```text
+src/
+  ACI.Core/
+  ACI.Framework/
+  ACI.LLM/
+  ACI.Server/
+docs/tech/
+  00-overview.md
+  01-core-module.md
+  02-framework-module.md
+  03-llm-module.md
+  04-server-module.md
+  05-data-flow.md
+  06-context-management.md
+  07-api-reference.md
+  08-app-development.md
+```
+
+## 6. 阅读顺序
+
+1. `01-core-module.md`
+2. `02-framework-module.md`
+3. `03-llm-module.md`
+4. `04-server-module.md`
+5. `05-data-flow.md`
+6. `06-context-management.md`
+7. `07-api-reference.md`
+8. `08-app-development.md`

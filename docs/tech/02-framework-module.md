@@ -1,350 +1,129 @@
-# Framework 模块详解
+# Framework 模块详解（最新版）
 
-> Framework 模块提供应用运行时环境，包括应用生命周期管理、窗口创建和操作执行。
+> 对应代码：`src/ACI.Framework`
 
-## 1. 模块概述
+## 1. 模块职责
 
-Framework 是连接 Core 和业务应用的桥梁，提供：
+Framework 负责把“应用定义”转成“可被 Core/LLM 操作的窗口”：
 
-```mermaid
-graph TB
-    subgraph "Framework 模块"
-        FH[FrameworkHost<br/>应用宿主]
-        RC[RuntimeContext<br/>运行时上下文]
-        CA[ContextApp<br/>应用基类]
-        CW[ContextWindow<br/>窗口定义]
-    end
-    
-    subgraph "Built-in Apps"
-        AL[AppLauncher<br/>应用启动器]
-        LOG[ActivityLog<br/>活动日志]
-    end
-    
-    FH --> RC
-    FH --> CA
-    CA --> CW
-    AL --> CA
-    LOG --> CA
-```
+1. 提供应用基类与运行时上下文（`ContextApp`、`IContext`、`RuntimeContext`）
+2. 管理应用生命周期与窗口刷新（`FrameworkHost`）
+3. 提供参数 schema DSL（`Param`）
+4. 内置应用（`launcher`、`activity_log`、`file_explorer`）
 
-## 2. 运行时上下文（RuntimeContext）
+## 2. RuntimeContext（IContext 实现）
 
-### 2.1 设计意图
+`IContext` 暴露以下能力：
 
-`RuntimeContext` 是 `IContext` 的实现，为应用提供访问所有 Core 服务的统一入口。
+- Core 服务：`Windows`、`Events`、`Clock`、`Context`
+- UI 刷新：`RequestRefresh(windowId)`
+- 后台任务：`StartBackgroundTask`、`CancelBackgroundTask`
+- 会话串行回写：`RunOnSessionAsync`
+- 服务定位：`GetService<T>()`
 
-### 2.2 接口定义
+`RuntimeContext` 由 `SessionContext` 注入后台任务处理器，由 `FrameworkHost` 注入刷新处理器。
 
-```csharp
-public interface IContext
-{
-    IWindowManager Windows { get; }
-    IEventBus Events { get; }
-    ISeqClock Clock { get; }
-    IContextManager Context { get; }
-    
-    void RequestRefresh(string windowId);
-    T? GetService<T>() where T : class;
-}
-```
+## 3. ContextApp 生命周期
 
-### 2.3 类图
+`ContextApp` 是应用基类，主流程如下：
 
-```mermaid
-classDiagram
-    class IContext {
-        <<interface>>
-        +IWindowManager Windows
-        +IEventBus Events
-        +ISeqClock Clock
-        +IContextManager Context
-        +RequestRefresh(windowId)
-        +GetService~T~() T
-    }
-    
-    class RuntimeContext {
-        -Action~string~ _refreshHandler
-        +SetRefreshHandler(handler)
-    }
-    
-    IContext <|-- RuntimeContext
-```
+1. `FrameworkHost.Register(app)`
+2. 首次启动时 `Initialize(state, context)` + `OnCreate()`
+3. `CreateWindow(intent)` 生成主窗口
+4. `RefreshWindow(windowId, intent)` 刷新（默认回退到 `CreateWindow`）
+5. 关闭应用时 `OnDestroy()`
 
-## 3. 应用宿主（FrameworkHost）
+每个应用有独立 `IAppState`（当前实现：`InMemoryAppState`）。
 
-### 3.1 设计意图
+## 4. ContextAction 与参数声明
 
-`FrameworkHost` 管理所有应用的注册、启动、刷新和关闭，是应用生命周期的核心。
+`ContextAction` 字段：
 
-### 3.2 核心职责
+- `Id`
+- `Label`
+- `Handler`
+- `Params`（`ActionParamSchema`）
+- `Mode`（`Sync/Async`）
 
-```mermaid
-flowchart LR
-    subgraph "FrameworkHost"
-        REG[注册应用]
-        LAUNCH[启动应用]
-        REFRESH[刷新窗口]
-        CLOSE[关闭应用]
-        EXEC[执行操作]
-    end
-    
-    REG --> LAUNCH
-    LAUNCH --> REFRESH
-    LAUNCH --> CLOSE
-    LAUNCH --> EXEC
-```
+当 `Mode=Async` 时，渲染到窗口 XML 会带 `mode="async"`，LLM 无需手填执行模式。
 
-### 3.3 关键方法
+参数声明推荐用 `Param` DSL：
 
 ```csharp
-public class FrameworkHost
+Params = Param.Object(new()
 {
-    // 注册应用
-    public void Register(ContextApp app);
-    
-    // 启动应用，创建窗口
-    public Window Launch(string appName, string? intent = null);
-    
-    // 刷新窗口内容
-    public void RefreshWindow(string windowId);
-    
-    // 关闭应用
-    public void Close(string appName);
-    
-    // 执行窗口操作
-    public Task<ActionResult> ExecuteActionAsync(
-        string windowId, 
-        string actionId, 
-        Dictionary<string, object>? parameters = null);
-    
-    // 获取所有已注册应用
-    public IEnumerable<AppInfo> GetApps();
-}
-```
-
-### 3.4 窗口创建流程
-
-```mermaid
-sequenceDiagram
-    participant Host as FrameworkHost
-    participant App as ContextApp
-    participant WM as WindowManager
-    participant CM as ContextManager
-    
-    Host->>App: CreateWindow(intent)
-    App-->>Host: ContextWindow
-    Host->>Host: Convert to Window
-    Host->>Host: Setup ActionHandler
-    Host->>WM: Add(window)
-    Host->>Host: Publish AppCreatedEvent
-    Host-->>: Window
-```
-
-### 3.5 窗口刷新机制
-
-窗口刷新是**原地更新**，保持窗口 ID 和上下文位置不变：
-
-```csharp
-public void RefreshWindow(string windowId)
-{
-    var window = _windows.Get(windowId);
-    if (window == null) return;
-    
-    var appName = _windowToApp[windowId];
-    var app = _apps[appName];
-    var intent = _windowIntents[windowId];
-    
-    // 应用重新生成窗口定义
-    var newDefinition = app.RefreshWindow(windowId, intent);
-    
-    // 原地更新内容和操作
-    window.Content = newDefinition.Content;
-    window.Actions.Clear();
-    window.Actions.AddRange(newDefinition.Actions);
-    window.Meta.UpdatedAt = _clock.Next();
-    
-    // 通知窗口更新
-    _windows.NotifyUpdated(windowId);
-}
-```
-
-## 4. 应用基类（ContextApp）
-
-### 4.1 设计意图
-
-`ContextApp` 是所有应用的基类，定义了应用的标准接口和生命周期。
-
-### 4.2 类定义
-
-```csharp
-public abstract class ContextApp
-{
-    // 应用标识
-    public abstract string Name { get; }
-    public virtual string? AppDescription => null;
-    public virtual string[] Tags => [];
-    
-    // 生命周期
-    public virtual void Initialize(IContext context) { }
-    public virtual void Dispose() { }
-    
-    // 窗口管理
-    public abstract ContextWindow CreateWindow(string? intent);
-    public virtual ContextWindow RefreshWindow(string windowId, string? intent = null)
-        => CreateWindow(intent);
-    
-    // 意图匹配（用于智能启动）
-    public virtual bool CanHandle(string intent) => false;
-    
-    // 便捷方法
-    protected void RequestRefresh(string windowId);
-}
-```
-
-### 4.3 应用开发示例
-
-```csharp
-public class TodoApp : ContextApp
-{
-    public override string Name => "todo";
-    public override string? AppDescription => "管理待办事项";
-    
-    private List<string> _items = [];
-    
-    public override ContextWindow CreateWindow(string? intent)
+    ["path"] = Param.String(),
+    ["options"] = Param.Object(new()
     {
-        return new ContextWindow
-        {
-            Description = new Text("待办事项列表"),
-            Content = new Column(
-                _items.Select((item, i) => 
-                    new Text($"[{i}] {item}")).ToArray()
-            ),
-            Actions =
-            [
-                new("add", "添加", [new("text", "string")]),
-                new("remove", "删除", [new("index", "int")])
-            ],
-            OnAction = HandleAction
-        };
-    }
-    
-    private Task<ActionResult> HandleAction(ActionContext ctx)
-    {
-        return ctx.ActionId switch
-        {
-            "add" => AddItem(ctx.GetString("text")),
-            "remove" => RemoveItem(ctx.GetInt("index")),
-            _ => Task.FromResult(ActionResult.Fail("未知操作"))
-        };
-    }
-}
+        ["recursive"] = Param.Boolean(required: false, defaultValue: false),
+        ["filters"] = Param.Array(Param.String(), required: false)
+    }, required: false)
+})
 ```
 
-## 5. 窗口定义（ContextWindow）
+## 5. FrameworkHost 关键行为
 
-### 5.1 设计意图
+### 5.1 启动应用
 
-`ContextWindow` 是应用返回的窗口定义，由 Framework 转换为实际的 `Window` 对象。
+`Launch(appName, intent)`：
 
-### 5.2 类定义
+1. 确保应用已启动生命周期（`EnsureStarted`）
+2. 调用应用 `CreateWindow`
+3. 转为 Core `Window` 并分配 `CreatedAt/UpdatedAt`
+4. 建立 `windowId -> appName/intent` 映射
+5. 发布 `AppCreatedEvent`
+6. 写入 `WindowManager`
 
-```csharp
-public class ContextWindow
-{
-    public string? Id { get; init; }
-    public IRenderable? Description { get; init; }
-    public required IRenderable Content { get; init; }
-    public List<ActionDefinition> Actions { get; init; } = [];
-    public WindowOptions? Options { get; init; }
-    public Func<ActionContext, Task<ActionResult>>? OnAction { get; init; }
-}
-```
+### 5.2 刷新窗口
 
-## 6. 内置应用
+`RefreshWindow(windowId)` 原地更新：
 
-### 6.1 应用启动器（AppLauncher）
+- 保留 `CreatedAt`
+- 更新 `Description/Content/Actions/Handler`
+- 更新 `UpdatedAt`
+- 调用 `WindowManager.NotifyUpdated`
+- 发布 `WindowRefreshedEvent`
 
-当 AI 使用 `create` 操作但不指定应用名时，自动显示可用应用列表。
+## 6. 内置应用（当前）
 
-```mermaid
-flowchart LR
-    AI[AI: create]
-    AL[AppLauncher]
-    LIST[显示应用列表]
-    SELECT[AI 选择应用]
-    LAUNCH[启动选中应用]
-    
-    AI --> AL
-    AL --> LIST
-    LIST --> SELECT
-    SELECT --> LAUNCH
-```
+### 6.1 launcher（常驻启动器）
 
-### 6.2 活动日志（ActivityLog）
+- 窗口 ID 固定：`launcher`
+- `Closable=false`
+- `PinInPrompt=true`
+- `open` 动作返回 `data.action="launch"`，由 LLM 层统一触发 `Host.Launch(...)`
 
-记录用户和 AI 的活动，使用精简模式显示。
+### 6.2 activity_log（活动日志）
 
-特点：
-- 精简模式（`IsCompact = true`）
-- 自动收集事件（订阅 EventBus）
-- 只显示最近 N 条记录
+- 订阅 `ActionExecutedEvent`、`AppCreatedEvent`、`BackgroundTaskLifecycleEvent`
+- 产生日志窗口，默认 `RenderMode=Compact`
+- 日志主窗口支持 `clear` / `close`
 
-## 7. 内置组件
+### 6.3 file_explorer（文件浏览器）
 
-Framework 提供了基础 UI 组件用于构建窗口内容：
+- 支持目录浏览、按索引打开、输入路径打开、返回上级、回到 home、查看驱动器
+- 展示条目索引，动作参数使用 schema 声明
 
-```mermaid
-classDiagram
-    class IRenderable {
-        <<interface>>
-        +ToXml() XElement
-        +Render() string
-    }
-    
-    class Text {
-        +string Content
-        +string Tag
-    }
-    
-    class Column {
-        +IRenderable[] Children
-        +string ItemTag
-    }
-    
-    class Row {
-        +IRenderable[] Children
-        +string Separator
-    }
-    
-    IRenderable <|-- Text
-    IRenderable <|-- Column
-    IRenderable <|-- Row
-```
+## 7. 目录结构
 
-| 组件 | 用途 | 示例输出 |
-|------|------|----------|
-| `Text` | 文本内容 | `<p>Hello</p>` |
-| `Column` | 垂直列表 | `<item>A</item><item>B</item>` |
-| `Row` | 水平排列 | `A | B | C` |
-
-## 8. 目录结构
-
-```
+```text
 ACI.Framework/
-├── Runtime/
-│   ├── IContext.cs
-│   ├── RuntimeContext.cs
-│   ├── FrameworkHost.cs
-│   ├── ContextApp.cs
-│   └── ContextWindow.cs
-│
-├── Components/
-│   ├── Text.cs
-│   ├── Column.cs
-│   └── Row.cs
-│
-└── BuiltIn/
-    ├── AppLauncher.cs
-    └── ActivityLog.cs
+  Runtime/
+    ContextApp.cs
+    ContextAction.cs
+    ContextWindow.cs
+    FrameworkHost.cs
+    IAppState.cs
+    IContext.cs
+    Param.cs
+    RuntimeContext.cs
+  Components/
+    Text.cs
+    HStack.cs
+    VStack.cs
+    Tree.cs
+  BuiltIn/
+    AppLauncher.cs
+    ActivityLog.cs
+    FileExplorerApp.cs
 ```
