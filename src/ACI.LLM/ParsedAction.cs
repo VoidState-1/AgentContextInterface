@@ -18,7 +18,7 @@ public class ParsedAction
     /// <summary>
     /// 操作参数（可选）。
     /// </summary>
-    public Dictionary<string, object>? Parameters { get; set; }
+    public System.Text.Json.JsonElement? Parameters { get; set; }
 }
 
 /// <summary>

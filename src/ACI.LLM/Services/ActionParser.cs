@@ -105,13 +105,13 @@ public static class ActionParser
         public JsonElement? Params { get; set; }
     }
 
-    private static Dictionary<string, object>? ReadParams(JsonElement? paramsElement)
+    private static JsonElement? ReadParams(JsonElement? paramsElement)
     {
         if (!paramsElement.HasValue || paramsElement.Value.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        return JsonSerializer.Deserialize<Dictionary<string, object>>(paramsElement.Value.GetRawText());
+        return paramsElement.Value.Clone();
     }
 }

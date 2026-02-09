@@ -1,4 +1,5 @@
 using ACI.Core.Models;
+using System.Text.Json;
 
 namespace ACI.Core.Abstractions;
 
@@ -31,31 +32,46 @@ public sealed class ActionContext
     /// <summary>
     /// 操作参数
     /// </summary>
-    public Dictionary<string, object>? Parameters { get; init; }
+    public JsonElement? Parameters { get; init; }
+
+    private bool TryGetParameter(string name, out JsonElement value)
+    {
+        value = default;
+        return Parameters.HasValue &&
+               Parameters.Value.ValueKind == JsonValueKind.Object &&
+               Parameters.Value.TryGetProperty(name, out value);
+    }
 
     /// <summary>
     /// 获取字符串参数
     /// </summary>
     public string? GetString(string name)
-        => Parameters?.TryGetValue(name, out var val) == true ? val?.ToString() : null;
+    {
+        if (!TryGetParameter(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null
+        };
+    }
 
     /// <summary>
     /// 获取整数参数
     /// </summary>
     public int? GetInt(string name)
     {
-        if (Parameters?.TryGetValue(name, out var val) != true) return null;
-        return val switch
+        if (!TryGetParameter(name, out var value)) return null;
+        return value.ValueKind switch
         {
-            int i => i,
-            long l => (int)l,
-            string s when int.TryParse(s, out var parsedString) => parsedString,
-            System.Text.Json.JsonElement je when
-                je.ValueKind == System.Text.Json.JsonValueKind.Number &&
-                je.TryGetInt32(out var i) => i,
-            System.Text.Json.JsonElement je when
-                je.ValueKind == System.Text.Json.JsonValueKind.String &&
-                int.TryParse(je.GetString(), out var parsedElementString) => parsedElementString,
+            JsonValueKind.Number when value.TryGetInt32(out var parsedNumber) => parsedNumber,
+            JsonValueKind.String when int.TryParse(value.GetString(), out var parsedString) => parsedString,
             _ => null
         };
     }
@@ -65,12 +81,12 @@ public sealed class ActionContext
     /// </summary>
     public bool GetBool(string name, bool defaultValue = false)
     {
-        if (Parameters?.TryGetValue(name, out var val) != true) return defaultValue;
-        return val switch
+        if (!TryGetParameter(name, out var value)) return defaultValue;
+        return value.ValueKind switch
         {
-            bool b => b,
-            string s => bool.TryParse(s, out var parsed) && parsed,
-            System.Text.Json.JsonElement je => je.ValueKind == System.Text.Json.JsonValueKind.True,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(value.GetString(), out var parsed) && parsed,
             _ => defaultValue
         };
     }

@@ -232,7 +232,7 @@ public class InteractionController
     public async Task<ActionResult> ExecuteWindowActionAsync(
         string windowId,
         string actionId,
-        Dictionary<string, object>? parameters = null)
+        JsonElement? parameters = null)
     {
         if (string.IsNullOrWhiteSpace(windowId) || string.IsNullOrWhiteSpace(actionId))
         {
@@ -266,10 +266,10 @@ public class InteractionController
                 await _actionExecutor.ExecuteAsync(
                     windowId,
                     "close",
-                    new Dictionary<string, object>
+                    JsonSerializer.SerializeToElement(new
                     {
-                        ["summary"] = $"已从窗口 {windowId} 打开应用 {appName}"
-                    });
+                        summary = $"已从窗口 {windowId} 打开应用 {appName}"
+                    }));
             }
 
             PruneContext();

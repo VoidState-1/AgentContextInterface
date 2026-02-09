@@ -1,4 +1,5 @@
 using ACI.Server.Services;
+using System.Text.Json;
 
 namespace ACI.Server.Endpoints;
 
@@ -119,5 +120,5 @@ public static class WindowEndpoints
 /// </summary>
 public class ActionRequest
 {
-    public Dictionary<string, object>? Params { get; set; }
+    public JsonElement? Params { get; set; }
 }

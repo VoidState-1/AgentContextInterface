@@ -1,10 +1,11 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
+using System.Text.Json;
 
 namespace ACI.Core.Services;
 
 /// <summary>
-/// 操作执行器 - 负责执行窗口操作
+/// Executes window actions and publishes execution events.
 /// </summary>
 public class ActionExecutor
 {
@@ -26,40 +27,37 @@ public class ActionExecutor
     }
 
     /// <summary>
-    /// 执行操作
+    /// Executes one action on one window.
     /// </summary>
     public async Task<ActionResult> ExecuteAsync(
         string windowId,
         string actionId,
-        Dictionary<string, object>? parameters = null)
+        JsonElement? parameters = null)
     {
-        // 1. 获取窗口
         var window = _windows.Get(windowId);
         if (window == null)
         {
-            return ActionResult.Fail($"窗口 '{windowId}' 不存在");
+            return ActionResult.Fail($"Window '{windowId}' does not exist");
         }
 
-        // close 是系统保留操作，允许窗口不显式声明
+        // Reserved system close action.
         if (actionId == "close")
         {
             if (!window.Options.Closable)
             {
-                return ActionResult.Fail($"窗口 '{windowId}' 不允许关闭");
+                return ActionResult.Fail($"Window '{windowId}' cannot be closed");
             }
 
-            var seq1 = _clock.Next();
-            var summary = parameters?.TryGetValue("summary", out var summaryObj) == true
-                ? summaryObj?.ToString()
-                : null;
+            var seq = _clock.Next();
+            var summary = TryGetSummary(parameters);
 
             _windows.Remove(windowId);
 
             var closeResult = ActionResult.Close(summary);
-            closeResult.LogSeq = seq1;
+            closeResult.LogSeq = seq;
 
             _events.Publish(new ActionExecutedEvent(
-                Seq: seq1,
+                Seq: seq,
                 WindowId: windowId,
                 ActionId: actionId,
                 Success: true,
@@ -69,24 +67,20 @@ public class ActionExecutor
             return closeResult;
         }
 
-        // 2. 获取操作定义
         var actionDef = window.Actions.FirstOrDefault(a => a.Id == actionId);
         if (actionDef == null)
         {
-            return ActionResult.Fail($"操作 '{actionId}' 在窗口 '{windowId}' 中不存在");
+            return ActionResult.Fail($"Action '{actionId}' does not exist on window '{windowId}'");
         }
 
-        // 3. 验证参数
         var validationError = ValidateParameters(actionDef, parameters);
         if (validationError != null)
         {
             return ActionResult.Fail(validationError);
         }
 
-        // 4. 分配 seq
-        var seq = _clock.Next();
+        var seq2 = _clock.Next();
 
-        // 5. 执行操作
         ActionResult result;
         if (window.Handler != null)
         {
@@ -96,33 +90,31 @@ public class ActionExecutor
                 ActionId = actionId,
                 Parameters = parameters
             };
+
             try
             {
                 result = await window.Handler.ExecuteAsync(context);
             }
             catch (Exception ex)
             {
-                result = ActionResult.Fail($"操作执行异常: {ex.Message}");
+                result = ActionResult.Fail($"Action execution failed: {ex.Message}");
             }
         }
         else
         {
-            // 无处理器，默认成功
             result = ActionResult.Ok();
         }
 
-        result.LogSeq = seq;
+        result.LogSeq = seq2;
 
-        // 6. 发布事件（供日志系统订阅）
         _events.Publish(new ActionExecutedEvent(
-            Seq: seq,
+            Seq: seq2,
             WindowId: windowId,
             ActionId: actionId,
             Success: result.Success,
             Summary: result.Summary
         ));
 
-        // 7. 处理结果
         if (result.ShouldClose || window.Options.AutoCloseOnAction)
         {
             _windows.Remove(windowId);
@@ -142,26 +134,46 @@ public class ActionExecutor
         return result;
     }
 
-    /// <summary>
-    /// 验证参数
-    /// </summary>
     private static string? ValidateParameters(
         ActionDefinition actionDef,
-        Dictionary<string, object>? parameters)
+        JsonElement? parameters)
     {
+        if (parameters.HasValue && parameters.Value.ValueKind != JsonValueKind.Object)
+        {
+            return "params must be a JSON object";
+        }
+
         foreach (var param in actionDef.Parameters.Where(p => p.Required))
         {
-            if (parameters == null || !parameters.ContainsKey(param.Name))
+            if (!parameters.HasValue || !parameters.Value.TryGetProperty(param.Name, out _))
             {
-                return $"缺少必需参数: {param.Name}";
+                return $"Missing required parameter: {param.Name}";
             }
         }
+
         return null;
+    }
+
+    private static string? TryGetSummary(JsonElement? parameters)
+    {
+        if (!parameters.HasValue || parameters.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!parameters.Value.TryGetProperty("summary", out var summaryElement))
+        {
+            return null;
+        }
+
+        return summaryElement.ValueKind == JsonValueKind.String
+            ? summaryElement.GetString()
+            : summaryElement.ToString();
     }
 }
 
 /// <summary>
-/// 操作执行事件（供日志系统订阅）
+/// Event emitted after an action finishes.
 /// </summary>
 public record ActionExecutedEvent(
     int Seq,
@@ -172,7 +184,7 @@ public record ActionExecutedEvent(
 ) : IEvent;
 
 /// <summary>
-/// 应用创建事件
+/// Event emitted when an app is launched.
 /// </summary>
 public record AppCreatedEvent(
     int Seq,
