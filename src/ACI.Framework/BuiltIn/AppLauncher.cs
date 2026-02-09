@@ -48,6 +48,10 @@ public class AppLauncher : ContextApp
                 {
                     Id = "open",
                     Label = "Open App",
+                    Params = Param.Object(new()
+                    {
+                        ["app"] = Param.String()
+                    }),
                     Handler = async ctx =>
                     {
                         var appName = ctx.GetString("app");
@@ -63,7 +67,7 @@ public class AppLauncher : ContextApp
                             data: new { action = "launch", app = appName, close_source = true }
                         );
                     }
-                }.WithParam("app", ParamType.String)
+                }
             ]
         };
     }

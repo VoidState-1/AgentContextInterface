@@ -1,11 +1,11 @@
-using ACI.Core.Models;
+﻿using ACI.Core.Models;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
 
 namespace ACI.Framework.BuiltIn;
 
 /// <summary>
-/// 文件浏览器应用（调试用）
+/// File explorer app for debugging and filesystem inspection.
 /// </summary>
 public sealed class FileExplorerApp : ContextApp
 {
@@ -17,7 +17,7 @@ public sealed class FileExplorerApp : ContextApp
 
     public override string Name => "file_explorer";
 
-    public override string? AppDescription => "浏览真实文件系统目录，支持目录跳转和上级返回";
+    public override string? AppDescription => "Browse real directories, open paths, and navigate parent folders.";
 
     public override void OnCreate()
     {
@@ -36,19 +36,19 @@ public sealed class FileExplorerApp : ContextApp
 
         var lines = new List<IComponent>
         {
-            new Text($"当前路径: {(IsDriveMode(currentPath) ? "[Drive List]" : currentPath)}"),
-            new Text($"共 {entries.Count} 项（最多显示 {MaxEntries} 项）"),
+            new Text($"Current path: {(IsDriveMode(currentPath) ? "[Drive List]" : currentPath)}"),
+            new Text($"Entries: {entries.Count} (max shown: {MaxEntries})"),
             new Text(""),
-            new Text("目录项（index 从 0 开始）：")
+            new Text("Directory entries (index starts from 0):")
         };
 
         if (entries.Count == 0)
         {
-            lines.Add(new Text("[空目录]"));
+            lines.Add(new Text("[Empty directory]"));
         }
         else
         {
-            for (int i = 0; i < entries.Count; i++)
+            for (var i = 0; i < entries.Count; i++)
             {
                 var item = entries[i];
                 var prefix = item.IsDirectory ? "[D]" : "[F]";
@@ -61,57 +61,65 @@ public sealed class FileExplorerApp : ContextApp
         {
             Id = WindowId,
             Description = new Text(
-                "文件浏览器。可用操作：open_index(index)、open_path(path)、up、home、drives、refresh、close。"),
+                "File explorer. Actions: open_index(index), open_path(path), up, home, drives, refresh, close."),
             Content = new VStack { Children = lines },
             Actions =
             [
                 new ContextAction
                 {
                     Id = "open_index",
-                    Label = "按索引打开",
+                    Label = "Open By Index",
+                    Params = Param.Object(new()
+                    {
+                        ["index"] = Param.Integer()
+                    }),
                     Handler = HandleOpenIndexAsync
-                }.WithParam("index", ParamType.Int),
+                },
 
                 new ContextAction
                 {
                     Id = "open_path",
-                    Label = "打开路径",
+                    Label = "Open Path",
+                    Params = Param.Object(new()
+                    {
+                        ["path"] = Param.String()
+                    }),
                     Handler = HandleOpenPathAsync
-                }.WithParam("path", ParamType.String),
+                },
 
                 new ContextAction
                 {
                     Id = "up",
-                    Label = "上级目录",
+                    Label = "Parent Directory",
                     Handler = HandleUpAsync
                 },
 
                 new ContextAction
                 {
                     Id = "home",
-                    Label = "用户目录",
+                    Label = "User Home",
                     Handler = HandleHomeAsync
                 },
 
                 new ContextAction
                 {
                     Id = "drives",
-                    Label = "盘符列表",
+                    Label = "Drive List",
                     Handler = HandleDrivesAsync
                 },
 
                 new ContextAction
                 {
                     Id = "refresh",
-                    Label = "刷新",
-                    Handler = _ => Task.FromResult(ActionResult.Ok(summary: "刷新目录", shouldRefresh: true))
+                    Label = "Refresh",
+                    Handler = _ => Task.FromResult(ActionResult.Ok(summary: "Refresh explorer", shouldRefresh: true))
                 },
 
                 new ContextAction
                 {
                     Id = "close",
-                    Label = "关闭",
-                    Handler = _ => Task.FromResult(ActionResult.Close("关闭文件浏览器"))
+                    Label = "Close",
+                    Handler = _ => Task.FromResult(ActionResult.Close("Close file explorer"))
                 }
             ]
         };
@@ -122,29 +130,29 @@ public sealed class FileExplorerApp : ContextApp
         var index = ctx.GetInt("index");
         if (index == null || index < 0)
         {
-            return Task.FromResult(ActionResult.Fail("index 参数无效"));
+            return Task.FromResult(ActionResult.Fail("index is invalid"));
         }
 
         var entries = State.Get<List<FsEntry>>(EntriesKey) ?? [];
         if (index >= entries.Count)
         {
-            return Task.FromResult(ActionResult.Fail($"index 超出范围，当前最大为 {entries.Count - 1}"));
+            return Task.FromResult(ActionResult.Fail($"index out of range, max is {entries.Count - 1}"));
         }
 
         var selected = entries[index.Value];
         if (!selected.IsDirectory)
         {
             return Task.FromResult(ActionResult.Ok(
-                message: $"文件: {selected.FullPath}",
-                summary: $"查看文件 {selected.Name} ({FormatBytes(selected.SizeBytes)})",
+                message: $"File: {selected.FullPath}",
+                summary: $"Inspect file {selected.Name} ({FormatBytes(selected.SizeBytes)})",
                 shouldRefresh: false
             ));
         }
 
         State.Set(CurrentPathKey, selected.FullPath);
         return Task.FromResult(ActionResult.Ok(
-            message: $"已进入目录: {selected.FullPath}",
-            summary: $"进入目录 {selected.FullPath}",
+            message: $"Enter directory: {selected.FullPath}",
+            summary: $"Enter directory {selected.FullPath}",
             shouldRefresh: true
         ));
     }
@@ -154,18 +162,18 @@ public sealed class FileExplorerApp : ContextApp
         var path = ctx.GetString("path")?.Trim();
         if (string.IsNullOrEmpty(path))
         {
-            return Task.FromResult(ActionResult.Fail("path 参数不能为空"));
+            return Task.FromResult(ActionResult.Fail("path cannot be empty"));
         }
 
         if (!Directory.Exists(path))
         {
-            return Task.FromResult(ActionResult.Fail($"目录不存在: {path}"));
+            return Task.FromResult(ActionResult.Fail($"Directory does not exist: {path}"));
         }
 
         State.Set(CurrentPathKey, Path.GetFullPath(path));
         return Task.FromResult(ActionResult.Ok(
-            message: $"已打开目录: {path}",
-            summary: $"打开目录 {path}",
+            message: $"Opened directory: {path}",
+            summary: $"Open directory {path}",
             shouldRefresh: true
         ));
     }
@@ -175,7 +183,7 @@ public sealed class FileExplorerApp : ContextApp
         var currentPath = State.Get<string>(CurrentPathKey) ?? DriveModeToken;
         if (IsDriveMode(currentPath))
         {
-            return Task.FromResult(ActionResult.Ok(message: "当前已经是盘符列表", shouldRefresh: true));
+            return Task.FromResult(ActionResult.Ok(message: "Already at drive list", shouldRefresh: true));
         }
 
         var parent = Directory.GetParent(currentPath)?.FullName;
@@ -183,16 +191,16 @@ public sealed class FileExplorerApp : ContextApp
         {
             State.Set(CurrentPathKey, DriveModeToken);
             return Task.FromResult(ActionResult.Ok(
-                message: "已返回盘符列表",
-                summary: "返回盘符列表",
+                message: "Back to drive list",
+                summary: "Back to drive list",
                 shouldRefresh: true
             ));
         }
 
         State.Set(CurrentPathKey, parent);
         return Task.FromResult(ActionResult.Ok(
-            message: $"已返回上级: {parent}",
-            summary: $"返回上级目录 {parent}",
+            message: $"Back to parent: {parent}",
+            summary: $"Back to parent directory {parent}",
             shouldRefresh: true
         ));
     }
@@ -202,13 +210,13 @@ public sealed class FileExplorerApp : ContextApp
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!Directory.Exists(home))
         {
-            return Task.FromResult(ActionResult.Fail($"用户目录不可用: {home}"));
+            return Task.FromResult(ActionResult.Fail($"User home is unavailable: {home}"));
         }
 
         State.Set(CurrentPathKey, home);
         return Task.FromResult(ActionResult.Ok(
-            message: $"已切换到用户目录: {home}",
-            summary: "切换到用户目录",
+            message: $"Switched to user home: {home}",
+            summary: "Switch to user home",
             shouldRefresh: true
         ));
     }
@@ -217,8 +225,8 @@ public sealed class FileExplorerApp : ContextApp
     {
         State.Set(CurrentPathKey, DriveModeToken);
         return Task.FromResult(ActionResult.Ok(
-            message: "已切换到盘符列表",
-            summary: "查看盘符列表",
+            message: "Switched to drive list",
+            summary: "View drive list",
             shouldRefresh: true
         ));
     }
