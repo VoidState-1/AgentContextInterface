@@ -37,6 +37,6 @@ public class ContextManager : IContextManager
         IWindowManager windowManager,
         int maxTokens,
         int minConversationTokens,
-        int trimToTokens)
-        => _store.Prune(_pruner, windowManager, maxTokens, minConversationTokens, trimToTokens);
+        int pruneTargetTokens)
+        => _store.Prune(_pruner, windowManager, maxTokens, minConversationTokens, pruneTargetTokens);
 }

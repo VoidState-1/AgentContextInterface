@@ -36,7 +36,7 @@ public class ContextRenderOptions
     /// <summary>
     /// 触发裁剪后收缩到的 Token 目标；小于等于 0 时默认收缩到 MaxTokens 的一半
     /// </summary>
-    public int TrimToTokens { get; set; } = 4000;
+    public int PruneTargetTokens { get; set; } = 4000;
 }
 
 public class ContextStorageOptions

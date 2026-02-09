@@ -149,7 +149,7 @@ internal sealed class InteractionOrchestrator
             _windowManager,
             _renderOptions.MaxTokens,
             _renderOptions.MinConversationTokens,
-            _renderOptions.TrimToTokens);
+            _renderOptions.PruneTargetTokens);
     }
 
     private static void AccumulateUsage(TokenUsage total, TokenUsage? delta)

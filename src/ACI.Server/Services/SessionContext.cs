@@ -62,10 +62,10 @@ public class SessionContext : IDisposable
 
         // 2. 初始化 RenderOptions
         var maxTokens = Math.Max(1000, options.Render.MaxTokens);
-        var trimToTokens = options.Render.TrimToTokens <= 0
+        var pruneTargetTokens = options.Render.PruneTargetTokens <= 0
             ? Math.Max(1, maxTokens / 2)
-            : Math.Clamp(options.Render.TrimToTokens, 1, maxTokens);
-        var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, trimToTokens);
+            : Math.Clamp(options.Render.PruneTargetTokens, 1, maxTokens);
+        var minConversationTokens = Math.Clamp(options.Render.MinConversationTokens, 0, pruneTargetTokens);
 
         // 3. 初始化 Core 层
         Clock = new SeqClock();
@@ -105,7 +105,7 @@ public class SessionContext : IDisposable
             {
                 MaxTokens = maxTokens,
                 MinConversationTokens = minConversationTokens,
-                TrimToTokens = trimToTokens
+                PruneTargetTokens = pruneTargetTokens
             },
             startBackgroundTask: StartInteractionBackgroundTask
         );

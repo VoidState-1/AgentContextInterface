@@ -37,7 +37,7 @@ public class RenderOptions
     /// <summary>
     /// 触发裁剪后收缩到的 Token 目标；小于等于 0 时按 MaxTokens 的一半处理
     /// </summary>
-    public int TrimToTokens { get; set; } = 16000;
+    public int PruneTargetTokens { get; set; } = 16000;
 }
 
 /// <summary>

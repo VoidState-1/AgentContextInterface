@@ -233,7 +233,7 @@ public class InteractionController
             _windowManager,
             _renderOptions.MaxTokens,
             _renderOptions.MinConversationTokens,
-            _renderOptions.TrimToTokens);
+            _renderOptions.PruneTargetTokens);
     }
 
     private void EnsureInitialized()

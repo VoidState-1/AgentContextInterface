@@ -118,11 +118,11 @@ public class ContextStore
         IWindowManager windowManager,
         int maxTokens,
         int minConversationTokens,
-        int trimToTokens)
+        int pruneTargetTokens)
     {
         lock (_lock)
         {
-            pruner.Prune(_activeItems, windowManager, maxTokens, minConversationTokens, trimToTokens);
+            pruner.Prune(_activeItems, windowManager, maxTokens, minConversationTokens, pruneTargetTokens);
         }
     }
 

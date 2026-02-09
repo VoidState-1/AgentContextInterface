@@ -54,6 +54,6 @@ public interface IContextManager
         IWindowManager windowManager,
         int maxTokens,
         int minConversationTokens,
-        int trimToTokens);
+        int pruneTargetTokens);
 }
 
