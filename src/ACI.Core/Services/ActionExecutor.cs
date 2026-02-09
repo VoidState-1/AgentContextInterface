@@ -73,7 +73,7 @@ public class ActionExecutor
             return ActionResult.Fail($"Action '{actionId}' does not exist on window '{windowId}'");
         }
 
-        var validationError = ValidateParameters(actionDef, parameters);
+        var validationError = ActionParamValidator.Validate(actionDef.ParamsSchema, parameters);
         if (validationError != null)
         {
             return ActionResult.Fail(validationError);
@@ -132,32 +132,6 @@ public class ActionExecutor
         }
 
         return result;
-    }
-
-    private static string? ValidateParameters(
-        ActionDefinition actionDef,
-        JsonElement? parameters)
-    {
-        if (parameters.HasValue && parameters.Value.ValueKind != JsonValueKind.Object)
-        {
-            return "params must be a JSON object";
-        }
-
-        var root = actionDef.ParamsSchema;
-        if (root?.Kind != ActionParamKind.Object || root.Properties == null)
-        {
-            return null;
-        }
-
-        foreach (var param in root.Properties.Where(p => p.Value.Required))
-        {
-            if (!parameters.HasValue || !parameters.Value.TryGetProperty(param.Key, out _))
-            {
-                return $"Missing required parameter: {param.Key}";
-            }
-        }
-
-        return null;
     }
 
     private static string? TryGetSummary(JsonElement? parameters)

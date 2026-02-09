@@ -43,6 +43,39 @@ public sealed class ActionContext
     }
 
     /// <summary>
+    /// Get raw JSON value for one parameter.
+    /// </summary>
+    public JsonElement? GetValue(string name)
+    {
+        if (!TryGetParameter(name, out var value))
+        {
+            return null;
+        }
+
+        return value.Clone();
+    }
+
+    /// <summary>
+    /// Deserialize one parameter to a typed value.
+    /// </summary>
+    public T? GetAs<T>(string name)
+    {
+        if (!TryGetParameter(name, out var value))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(value.GetRawText());
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
     /// 获取字符串参数
     /// </summary>
     public string? GetString(string name)
