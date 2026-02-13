@@ -1,4 +1,42 @@
+using ACI.Framework.Runtime;
+
 namespace ACI.Server.Dto;
+
+/// <summary>
+/// 创建 Session 请求
+/// </summary>
+public class CreateSessionRequest
+{
+    /// <summary>
+    /// Agent 配置列表。为空时默认创建单 Agent。
+    /// </summary>
+    public List<AgentProfileDto>? Agents { get; set; }
+}
+
+/// <summary>
+/// Agent 配置 DTO
+/// </summary>
+public class AgentProfileDto
+{
+    public required string Id { get; set; }
+    public required string Name { get; set; }
+    public string? Role { get; set; }
+    public string? Model { get; set; }
+    public int MaxTokenBudget { get; set; }
+    public int MaxResponseTimeSeconds { get; set; }
+    public int MaxToolCallTurns { get; set; }
+
+    public AgentProfile ToProfile() => new()
+    {
+        Id = Id,
+        Name = Name,
+        Role = Role,
+        Model = Model,
+        MaxTokenBudget = MaxTokenBudget,
+        MaxResponseTimeSeconds = MaxResponseTimeSeconds,
+        MaxToolCallTurns = MaxToolCallTurns
+    };
+}
 
 /// <summary>
 /// 消息请求

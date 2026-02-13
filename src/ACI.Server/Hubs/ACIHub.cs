@@ -48,13 +48,13 @@ public class ACIHub : Hub
 }
 
 /// <summary>
-/// Hub 通知器接口
+/// Hub 通知器接口（推送事件携带 agentId）
 /// </summary>
 public interface IACIHubNotifier
 {
-    Task NotifyWindowCreated(string sessionId, Window window);
-    Task NotifyWindowUpdated(string sessionId, Window window);
-    Task NotifyWindowClosed(string sessionId, string windowId);
+    Task NotifyWindowCreated(string sessionId, string agentId, Window window);
+    Task NotifyWindowUpdated(string sessionId, string agentId, Window window);
+    Task NotifyWindowClosed(string sessionId, string agentId, string windowId);
 }
 
 /// <summary>
@@ -69,10 +69,11 @@ public class ACIHubNotifier : IACIHubNotifier
         _hubContext = hubContext;
     }
 
-    public async Task NotifyWindowCreated(string sessionId, Window window)
+    public async Task NotifyWindowCreated(string sessionId, string agentId, Window window)
     {
         await _hubContext.Clients.Group(sessionId).SendAsync("WindowCreated", new
         {
+            AgentId = agentId,
             window.Id,
             Description = window.Description?.Render(),
             Content = window.Render(),
@@ -82,10 +83,11 @@ public class ACIHubNotifier : IACIHubNotifier
         });
     }
 
-    public async Task NotifyWindowUpdated(string sessionId, Window window)
+    public async Task NotifyWindowUpdated(string sessionId, string agentId, Window window)
     {
         await _hubContext.Clients.Group(sessionId).SendAsync("WindowUpdated", new
         {
+            AgentId = agentId,
             window.Id,
             Description = window.Description?.Render(),
             Content = window.Render(),
@@ -93,10 +95,11 @@ public class ACIHubNotifier : IACIHubNotifier
         });
     }
 
-    public async Task NotifyWindowClosed(string sessionId, string windowId)
+    public async Task NotifyWindowClosed(string sessionId, string agentId, string windowId)
     {
         await _hubContext.Clients.Group(sessionId).SendAsync("WindowClosed", new
         {
+            AgentId = agentId,
             WindowId = windowId
         });
     }

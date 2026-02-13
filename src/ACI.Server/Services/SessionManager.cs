@@ -2,25 +2,26 @@ using System.Collections.Concurrent;
 using ACI.Core.Abstractions;
 using ACI.Framework.Runtime;
 using ACI.LLM.Abstractions;
+using ACI.Server.Dto;
 using ACI.Server.Hubs;
 using ACI.Server.Settings;
 
 namespace ACI.Server.Services;
 
 /// <summary>
-/// 会话管理器接口
+/// 会话管理器接口（管理 Session 而非单个 Agent）
 /// </summary>
 public interface ISessionManager
 {
     /// <summary>
-    /// 创建新会话（当前使用默认单 Agent 模式，步骤 6 将改造为多 Agent）
+    /// 创建新会话（支持多 Agent）
     /// </summary>
-    AgentContext CreateSession(string? sessionId = null);
+    Session CreateSession(CreateSessionRequest? request = null);
 
     /// <summary>
     /// 获取会话
     /// </summary>
-    AgentContext? GetSession(string sessionId);
+    Session? GetSession(string sessionId);
 
     /// <summary>
     /// 关闭会话
@@ -53,12 +54,12 @@ public enum SessionChangeType
 }
 
 /// <summary>
-/// 会话管理器实现（当前使用 AgentContext 作为过渡，步骤 6 将改为管理 Session）
+/// 会话管理器实现（管理 Session）
 /// </summary>
 public class SessionManager : ISessionManager
 {
-    private readonly ConcurrentDictionary<string, AgentContext> _sessions = new();
-    private readonly ConcurrentDictionary<string, Action<WindowChangedEvent>> _windowHandlers = new();
+    private readonly ConcurrentDictionary<string, Session> _sessions = new();
+    private readonly ConcurrentDictionary<string, List<(string AgentId, Action<WindowChangedEvent> Handler)>> _windowHandlers = new();
     private readonly ILLMBridge _llmBridge;
     private readonly IACIHubNotifier _hubNotifier;
     private readonly ACIOptions _options;
@@ -78,32 +79,34 @@ public class SessionManager : ISessionManager
         _configureApps = configureApps;
     }
 
-    public AgentContext CreateSession(string? sessionId = null)
+    public Session CreateSession(CreateSessionRequest? request = null)
     {
-        sessionId ??= Guid.NewGuid().ToString("N");
+        var sessionId = Guid.NewGuid().ToString("N");
 
-        // 当前过渡期：使用默认 Profile，单 Agent 模式
-        var profile = new AgentProfile { Id = sessionId, Name = "Default Agent" };
-        var context = new AgentContext(profile, _llmBridge, _options, configureApps: _configureApps);
-        _sessions[sessionId] = context;
-        BindWindowNotifications(context);
+        // 解析 Agent 配置（为空则默认单 Agent）
+        var profiles = ParseProfiles(request);
+
+        var session = new Session(
+            sessionId, profiles, _llmBridge, _options, _configureApps);
+        _sessions[sessionId] = session;
+        BindWindowNotifications(session);
 
         OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Created));
 
-        return context;
+        return session;
     }
 
-    public AgentContext? GetSession(string sessionId)
+    public Session? GetSession(string sessionId)
     {
         return _sessions.GetValueOrDefault(sessionId);
     }
 
     public void CloseSession(string sessionId)
     {
-        if (_sessions.TryRemove(sessionId, out var context))
+        if (_sessions.TryRemove(sessionId, out var session))
         {
-            UnbindWindowNotifications(context);
-            context.Dispose();
+            UnbindWindowNotifications(session);
+            session.Dispose();
             OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Closed));
         }
     }
@@ -113,40 +116,74 @@ public class SessionManager : ISessionManager
         return _sessions.Keys;
     }
 
-    private void BindWindowNotifications(AgentContext context)
+    /// <summary>
+    /// 解析请求中的 Agent 配置。
+    /// </summary>
+    private static IReadOnlyList<AgentProfile> ParseProfiles(CreateSessionRequest? request)
     {
-        Action<WindowChangedEvent> handler = evt => _ = NotifyWindowChangeAsync(context.AgentId, evt);
-        context.Windows.OnChanged += handler;
-        _windowHandlers[context.AgentId] = handler;
+        if (request?.Agents == null || request.Agents.Count == 0)
+        {
+            return [AgentProfile.Default()];
+        }
+
+        return request.Agents.Select(a => a.ToProfile()).ToList();
     }
 
-    private void UnbindWindowNotifications(AgentContext context)
+    /// <summary>
+    /// 为 Session 中每个 Agent 绑定窗口通知。
+    /// </summary>
+    private void BindWindowNotifications(Session session)
     {
-        if (_windowHandlers.TryRemove(context.AgentId, out var handler))
+        var handlers = new List<(string AgentId, Action<WindowChangedEvent> Handler)>();
+
+        foreach (var agent in session.GetAllAgents())
         {
-            context.Windows.OnChanged -= handler;
+            Action<WindowChangedEvent> handler = evt =>
+                _ = NotifyWindowChangeAsync(session.SessionId, agent.AgentId, evt);
+            agent.Windows.OnChanged += handler;
+            handlers.Add((agent.AgentId, handler));
+        }
+
+        _windowHandlers[session.SessionId] = handlers;
+    }
+
+    /// <summary>
+    /// 解绑窗口通知。
+    /// </summary>
+    private void UnbindWindowNotifications(Session session)
+    {
+        if (!_windowHandlers.TryRemove(session.SessionId, out var handlers)) return;
+
+        foreach (var (agentId, handler) in handlers)
+        {
+            var agent = session.GetAgent(agentId);
+            if (agent != null)
+            {
+                agent.Windows.OnChanged -= handler;
+            }
         }
     }
 
-    private async Task NotifyWindowChangeAsync(string sessionId, WindowChangedEvent evt)
+    private async Task NotifyWindowChangeAsync(
+        string sessionId, string agentId, WindowChangedEvent evt)
     {
         try
         {
             if (evt.Type == WindowEventType.Created && evt.Window != null)
             {
-                await _hubNotifier.NotifyWindowCreated(sessionId, evt.Window);
+                await _hubNotifier.NotifyWindowCreated(sessionId, agentId, evt.Window);
                 return;
             }
 
             if (evt.Type == WindowEventType.Updated && evt.Window != null)
             {
-                await _hubNotifier.NotifyWindowUpdated(sessionId, evt.Window);
+                await _hubNotifier.NotifyWindowUpdated(sessionId, agentId, evt.Window);
                 return;
             }
 
             if (evt.Type == WindowEventType.Removed)
             {
-                await _hubNotifier.NotifyWindowClosed(sessionId, evt.WindowId);
+                await _hubNotifier.NotifyWindowClosed(sessionId, agentId, evt.WindowId);
             }
         }
         catch

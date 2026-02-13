@@ -4,78 +4,75 @@ using ACI.Server.Services;
 namespace ACI.Server.Endpoints;
 
 /// <summary>
-/// AI 交互端点
+/// AI 交互端点（Agent 级）
 /// </summary>
 public static class InteractionEndpoints
 {
     public static void MapInteractionEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/sessions/{sessionId}/interact")
+        var group = app.MapGroup("/api/sessions/{sessionId}/agents/{agentId}/interact")
             .WithTags("Interaction");
 
-        // 发送消息
+        // 发送消息（通过 Session 入口，支持唤起队列）
         group.MapPost("/", async (
             string sessionId,
+            string agentId,
             MessageRequest request,
             ISessionManager sessionManager,
             CancellationToken ct) =>
         {
-            // 验证会话
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
             {
                 return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
             }
 
-            // 验证请求
+            if (session.GetAgent(agentId) == null)
+            {
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+            }
+
             if (string.IsNullOrWhiteSpace(request.Message))
             {
                 return Results.BadRequest(new { Error = "消息不能为空" });
             }
 
-            // 处理请求
-            var result = await session.RunSerializedAsync(
-                () => session.Interaction.ProcessAsync(request.Message, ct),
-                ct);
+            var result = await session.InteractAsync(agentId, request.Message, ct);
 
-            if (!result.Success)
-            {
-                return Results.Ok(ToFailedResponse(result));
-            }
-
-            return Results.Ok(ToSuccessResponse(result));
+            return Results.Ok(result.Success
+                ? ToSuccessResponse(result)
+                : ToFailedResponse(result));
         });
 
         // 手动模拟 AI 输出（调试用）
         group.MapPost("/simulate", async (
             string sessionId,
+            string agentId,
             SimulateRequest request,
             ISessionManager sessionManager,
             CancellationToken ct) =>
         {
-            // 验证会话
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
             {
                 return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
             }
 
-            // 验证请求
+            if (session.GetAgent(agentId) == null)
+            {
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+            }
+
             if (string.IsNullOrWhiteSpace(request.AssistantOutput))
             {
                 return Results.BadRequest(new { Error = "AssistantOutput 不能为空" });
             }
 
-            var result = await session.RunSerializedAsync(
-                () => session.Interaction.ProcessAssistantOutputAsync(request.AssistantOutput, ct),
-                ct);
+            var result = await session.SimulateAsync(agentId, request.AssistantOutput, ct);
 
-            if (!result.Success)
-            {
-                return Results.Ok(ToFailedResponse(result));
-            }
-
-            return Results.Ok(ToSuccessResponse(result));
+            return Results.Ok(result.Success
+                ? ToSuccessResponse(result)
+                : ToFailedResponse(result));
         });
     }
 

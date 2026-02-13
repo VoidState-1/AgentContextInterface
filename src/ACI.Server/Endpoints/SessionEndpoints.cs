@@ -1,46 +1,62 @@
+using ACI.Server.Dto;
 using ACI.Server.Services;
 using System.Text;
 
 namespace ACI.Server.Endpoints;
 
 /// <summary>
-/// 会话相关端点
+/// 会话与 Agent 相关端点
 /// </summary>
 public static class SessionEndpoints
 {
     public static void MapSessionEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/sessions")
+        // ========== Session 级端点 ==========
+        var sessions = app.MapGroup("/api/sessions")
             .WithTags("Sessions");
 
         // 获取所有会话
-        group.MapGet("/", (ISessionManager sessionManager) =>
+        sessions.MapGet("/", (ISessionManager sessionManager) =>
         {
-            var sessions = sessionManager.GetActiveSessions()
+            var list = sessionManager.GetActiveSessions()
                 .Select(id => sessionManager.GetSession(id))
                 .Where(s => s != null)
                 .Select(s => new
                 {
-                    s!.AgentId,
-                    s.CreatedAt
+                    s!.SessionId,
+                    s.CreatedAt,
+                    AgentCount = s.AgentCount,
+                    Agents = s.GetAllAgents().Select(a => new
+                    {
+                        a.AgentId,
+                        a.Profile.Name,
+                        a.Profile.Role
+                    })
                 });
 
-            return Results.Ok(sessions);
+            return Results.Ok(list);
         });
 
         // 创建新会话
-        group.MapPost("/", (ISessionManager sessionManager) =>
+        sessions.MapPost("/", (CreateSessionRequest? request, ISessionManager sessionManager) =>
         {
-            var session = sessionManager.CreateSession();
-            return Results.Created($"/api/sessions/{session.AgentId}", new
+            var session = sessionManager.CreateSession(request);
+            return Results.Created($"/api/sessions/{session.SessionId}", new
             {
-                session.AgentId,
-                session.CreatedAt
+                session.SessionId,
+                session.CreatedAt,
+                AgentCount = session.AgentCount,
+                Agents = session.GetAllAgents().Select(a => new
+                {
+                    a.AgentId,
+                    a.Profile.Name,
+                    a.Profile.Role
+                })
             });
         });
 
         // 获取单个会话
-        group.MapGet("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
+        sessions.MapGet("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
         {
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
@@ -50,17 +66,21 @@ public static class SessionEndpoints
 
             return Results.Ok(new
             {
-                session.AgentId,
+                session.SessionId,
                 session.CreatedAt,
-                WindowCount = session.Windows.GetAll().Count()
+                AgentCount = session.AgentCount,
+                Agents = session.GetAllAgents().Select(a => new
+                {
+                    a.AgentId,
+                    a.Profile.Name,
+                    a.Profile.Role,
+                    WindowCount = a.Windows.GetAll().Count()
+                })
             });
         });
 
-        // 获取会话上下文时间线（按 Seq 顺序）
-        group.MapGet("/{sessionId}/context", (
-            string sessionId,
-            bool includeObsolete,
-            ISessionManager sessionManager) =>
+        // 关闭会话
+        sessions.MapDelete("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
         {
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
@@ -68,14 +88,53 @@ public static class SessionEndpoints
                 return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
             }
 
+            sessionManager.CloseSession(sessionId);
+            return Results.NoContent();
+        });
+
+        // ========== Agent 级端点 ==========
+        var agents = app.MapGroup("/api/sessions/{sessionId}/agents")
+            .WithTags("Agents");
+
+        // 获取 Agent 列表
+        agents.MapGet("/", (string sessionId, ISessionManager sessionManager) =>
+        {
+            var session = sessionManager.GetSession(sessionId);
+            if (session == null)
+            {
+                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+            }
+
+            return Results.Ok(session.GetAllAgents().Select(a => new
+            {
+                a.AgentId,
+                a.Profile.Name,
+                a.Profile.Role,
+                WindowCount = a.Windows.GetAll().Count()
+            }));
+        });
+
+        // 获取 Agent 上下文时间线
+        agents.MapGet("/{agentId}/context", (
+            string sessionId,
+            string agentId,
+            bool includeObsolete,
+            ISessionManager sessionManager) =>
+        {
+            var agent = ResolveAgent(sessionManager, sessionId, agentId);
+            if (agent == null)
+            {
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+            }
+
             var items = includeObsolete
-                ? session.Context.GetArchive()
-                : session.Context.GetActive();
+                ? agent.Context.GetArchive()
+                : agent.Context.GetActive();
 
             var timeline = items.Select(item =>
             {
                 var isWindow = item.Type == Core.Models.ContextItemType.Window;
-                var window = isWindow ? session.Windows.Get(item.Content) : null;
+                var window = isWindow ? agent.Windows.Get(item.Content) : null;
 
                 return new
                 {
@@ -91,9 +150,7 @@ public static class SessionEndpoints
                         Exists = window != null,
                         window?.AppName,
                         Description = window?.Description?.Render(),
-                        // Full XML that LLM receives for window items
                         Rendered = window?.Render(),
-                        // Readable content-only text for debug UI
                         Display = window?.Content.Render(),
                         IsCompact = window?.Options.RenderMode == Core.Models.RenderMode.Compact,
                         CreatedAt = window?.Meta.CreatedAt,
@@ -105,28 +162,29 @@ public static class SessionEndpoints
             return Results.Ok(timeline);
         });
 
-        // 获取会话原始上下文文本（单块字符串）
-        group.MapGet("/{sessionId}/context/raw", (
+        // 获取 Agent 原始上下文文本
+        agents.MapGet("/{agentId}/context/raw", (
             string sessionId,
+            string agentId,
             bool includeObsolete,
             ISessionManager sessionManager) =>
         {
-            var session = sessionManager.GetSession(sessionId);
-            if (session == null)
+            var agent = ResolveAgent(sessionManager, sessionId, agentId);
+            if (agent == null)
             {
-                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
             }
 
             var items = includeObsolete
-                ? session.Context.GetArchive()
-                : session.Context.GetActive();
+                ? agent.Context.GetArchive()
+                : agent.Context.GetActive();
 
             var sb = new StringBuilder();
             foreach (var item in items)
             {
                 if (item.Type == Core.Models.ContextItemType.Window)
                 {
-                    var window = session.Windows.Get(item.Content);
+                    var window = agent.Windows.Get(item.Content);
                     if (window != null)
                     {
                         sb.AppendLine(window.Render());
@@ -143,54 +201,55 @@ public static class SessionEndpoints
             return Results.Text(sb.ToString().TrimEnd(), "text/plain; charset=utf-8");
         });
 
-        // 获取当前发送给 LLM 的原始输入快照（单块字符串）
-        group.MapGet("/{sessionId}/llm-input/raw", (
+        // 获取 LLM 输入快照
+        agents.MapGet("/{agentId}/llm-input/raw", (
             string sessionId,
+            string agentId,
             ISessionManager sessionManager) =>
         {
-            var session = sessionManager.GetSession(sessionId);
-            if (session == null)
+            var agent = ResolveAgent(sessionManager, sessionId, agentId);
+            if (agent == null)
             {
-                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
             }
 
-            var raw = session.Interaction.GetCurrentLlmInputRaw();
+            var raw = agent.Interaction.GetCurrentLlmInputRaw();
             return Results.Text(raw, "text/plain; charset=utf-8");
         });
 
-        // 获取会话可用应用列表（用于调试模拟器）
-        group.MapGet("/{sessionId}/apps", (string sessionId, ISessionManager sessionManager) =>
+        // 获取 Agent 应用列表
+        agents.MapGet("/{agentId}/apps", (
+            string sessionId,
+            string agentId,
+            ISessionManager sessionManager) =>
         {
-            var session = sessionManager.GetSession(sessionId);
-            if (session == null)
+            var agent = ResolveAgent(sessionManager, sessionId, agentId);
+            if (agent == null)
             {
-                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
             }
 
-            var apps = session.Host.GetAllApps()
+            var apps = agent.Host.GetAllApps()
                 .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(app => new
+                .Select(a => new
                 {
-                    app.Name,
-                    Description = app.AppDescription,
-                    app.Tags,
-                    IsStarted = session.Host.IsStarted(app.Name)
+                    a.Name,
+                    Description = a.AppDescription,
+                    a.Tags,
+                    IsStarted = agent.Host.IsStarted(a.Name)
                 });
 
             return Results.Ok(apps);
         });
+    }
 
-        // 关闭会话
-        group.MapDelete("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
-        {
-            var session = sessionManager.GetSession(sessionId);
-            if (session == null)
-            {
-                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
-            }
-
-            sessionManager.CloseSession(sessionId);
-            return Results.NoContent();
-        });
+    /// <summary>
+    /// 解析 Agent（先找 Session，再找 Agent）
+    /// </summary>
+    private static AgentContext? ResolveAgent(
+        ISessionManager sessionManager, string sessionId, string agentId)
+    {
+        var session = sessionManager.GetSession(sessionId);
+        return session?.GetAgent(agentId);
     }
 }
