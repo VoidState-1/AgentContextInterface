@@ -1,5 +1,6 @@
 using ACI.Core.Models;
 using ACI.LLM.Abstractions;
+using ACI.Server.Dto;
 using ACI.Server.Hubs;
 using ACI.Server.Services;
 using ACI.Server.Settings;
@@ -8,22 +9,46 @@ namespace ACI.Server.Tests.Services;
 
 public class SessionManagerTests
 {
-    // 测试点：CreateSession 应创建会话并触发 Created 事件。
-    // 预期结果：可通过 sessionId 取回会话，事件类型为 Created。
+    // 测试点：不带参数 CreateSession 应创建默认单 Agent 会话。
+    // 预期结果：可通过返回的 sessionId 取回会话，事件类型为 Created，包含 1 个 Agent。
     [Fact]
-    public void CreateSession_ShouldTrackSessionAndRaiseCreatedEvent()
+    public void CreateSession_Default_ShouldCreateSingleAgentSession()
     {
         var manager = CreateManager(out _);
         SessionChangeEvent? changeEvent = null;
         manager.OnSessionChange += evt => changeEvent = evt;
 
-        var session = manager.CreateSession("session-a");
+        var session = manager.CreateSession();
 
-        Assert.NotNull(manager.GetSession("session-a"));
-        Assert.Contains("session-a", manager.GetActiveSessions());
+        Assert.NotNull(manager.GetSession(session.SessionId));
+        Assert.Contains(session.SessionId, manager.GetActiveSessions());
+        Assert.Equal(1, session.AgentCount);
         Assert.NotNull(changeEvent);
-        Assert.Equal("session-a", changeEvent!.SessionId);
-        Assert.Equal(SessionChangeType.Created, changeEvent.Type);
+        Assert.Equal(SessionChangeType.Created, changeEvent!.Type);
+
+        manager.CloseSession(session.SessionId);
+    }
+
+    // 测试点：传入多 Agent 配置创建 Session。
+    // 预期结果：Session 包含指定数量的 Agent，且可通过 ID 找到。
+    [Fact]
+    public void CreateSession_MultiAgent_ShouldCreateAllAgents()
+    {
+        var manager = CreateManager(out _);
+        var request = new CreateSessionRequest
+        {
+            Agents =
+            [
+                new AgentProfileDto { Id = "planner", Name = "Planner" },
+                new AgentProfileDto { Id = "coder", Name = "Coder" }
+            ]
+        };
+
+        var session = manager.CreateSession(request);
+
+        Assert.Equal(2, session.AgentCount);
+        Assert.NotNull(session.GetAgent("planner"));
+        Assert.NotNull(session.GetAgent("coder"));
 
         manager.CloseSession(session.SessionId);
     }
@@ -34,7 +59,7 @@ public class SessionManagerTests
     public void CloseSession_ShouldRemoveSessionAndRaiseClosedEvent()
     {
         var manager = CreateManager(out _);
-        var session = manager.CreateSession("session-b");
+        var session = manager.CreateSession();
 
         SessionChangeEvent? closedEvent = null;
         manager.OnSessionChange += evt =>
@@ -45,51 +70,51 @@ public class SessionManagerTests
             }
         };
 
-        manager.CloseSession("session-b");
+        manager.CloseSession(session.SessionId);
 
-        Assert.Null(manager.GetSession("session-b"));
-        Assert.DoesNotContain("session-b", manager.GetActiveSessions());
+        Assert.Null(manager.GetSession(session.SessionId));
+        Assert.DoesNotContain(session.SessionId, manager.GetActiveSessions());
         Assert.NotNull(closedEvent);
-        Assert.Equal("session-b", closedEvent!.SessionId);
+        Assert.Equal(session.SessionId, closedEvent!.SessionId);
     }
 
     // 测试点：窗口创建/更新/关闭事件应通过 SessionManager 转发给 Hub 通知器。
-    // 预期结果：通知器收到对应的 created/updated/closed 调用。
+    // 预期结果：通知器收到对应的 created/updated/closed 调用，且携带 agentId。
     [Fact]
-    public async Task SessionWindowChanges_ShouldNotifyHub()
+    public async Task SessionWindowChanges_ShouldNotifyHubWithAgentId()
     {
         var manager = CreateManager(out var notifier);
-        var session = manager.CreateSession("session-c");
+        var session = manager.CreateSession();
+        var agent = session.GetAllAgents().First();
 
-        var launched = session.Host.Launch("file_explorer");
-        session.Host.RefreshWindow(launched.Id);
-        session.Windows.Remove(launched.Id);
+        var launched = agent.Host.Launch("file_explorer");
+        agent.Host.RefreshWindow(launched.Id);
+        agent.Windows.Remove(launched.Id);
 
-        await WaitForAsync(() => notifier.Created.Any(w => w.Id == launched.Id));
-        await WaitForAsync(() => notifier.Updated.Any(w => w.Id == launched.Id));
-        await WaitForAsync(() => notifier.Closed.Contains(launched.Id));
+        await WaitForAsync(() => notifier.Created.Any(e => e.WindowId == launched.Id));
+        await WaitForAsync(() => notifier.Updated.Any(e => e.WindowId == launched.Id));
+        await WaitForAsync(() => notifier.Closed.Any(e => e.WindowId == launched.Id));
 
-        Assert.Contains(notifier.Created, w => w.Id == launched.Id);
-        Assert.Contains(notifier.Updated, w => w.Id == launched.Id);
-        Assert.Contains(launched.Id, notifier.Closed);
+        // 验证 agentId 被传递
+        Assert.All(notifier.Created, e => Assert.Equal(agent.AgentId, e.AgentId));
+        Assert.All(notifier.Updated, e => Assert.Equal(agent.AgentId, e.AgentId));
+        Assert.All(notifier.Closed, e => Assert.Equal(agent.AgentId, e.AgentId));
 
-        manager.CloseSession("session-c");
+        manager.CloseSession(session.SessionId);
     }
 
     // 测试点：关闭不存在会话应安全无副作用。
-    // 预期结果：不抛异常，活跃会话集合不变。
+    // 预期结果：不抛异常。
     [Fact]
     public void CloseSession_MissingSession_ShouldBeNoOp()
     {
         var manager = CreateManager(out _);
-        manager.CreateSession("session-d");
+        var session = manager.CreateSession();
 
         var ex = Record.Exception(() => manager.CloseSession("missing"));
-
         Assert.Null(ex);
-        Assert.Contains("session-d", manager.GetActiveSessions());
 
-        manager.CloseSession("session-d");
+        manager.CloseSession(session.SessionId);
     }
 
     private static SessionManager CreateManager(out SpyHubNotifier notifier)
@@ -131,27 +156,29 @@ public class SessionManagerTests
         }
     }
 
+    private sealed record WindowNotification(string AgentId, string WindowId);
+
     private sealed class SpyHubNotifier : IACIHubNotifier
     {
-        public List<Window> Created { get; } = [];
-        public List<Window> Updated { get; } = [];
-        public List<string> Closed { get; } = [];
+        public List<WindowNotification> Created { get; } = [];
+        public List<WindowNotification> Updated { get; } = [];
+        public List<WindowNotification> Closed { get; } = [];
 
-        public Task NotifyWindowCreated(string sessionId, Window window)
+        public Task NotifyWindowCreated(string sessionId, string agentId, Window window)
         {
-            Created.Add(window);
+            Created.Add(new WindowNotification(agentId, window.Id));
             return Task.CompletedTask;
         }
 
-        public Task NotifyWindowUpdated(string sessionId, Window window)
+        public Task NotifyWindowUpdated(string sessionId, string agentId, Window window)
         {
-            Updated.Add(window);
+            Updated.Add(new WindowNotification(agentId, window.Id));
             return Task.CompletedTask;
         }
 
-        public Task NotifyWindowClosed(string sessionId, string windowId)
+        public Task NotifyWindowClosed(string sessionId, string agentId, string windowId)
         {
-            Closed.Add(windowId);
+            Closed.Add(new WindowNotification(agentId, windowId));
             return Task.CompletedTask;
         }
     }

@@ -9,7 +9,8 @@ Push-Location $repoRoot
 try {
     $dotnetHomeRoot = if ([string]::IsNullOrWhiteSpace($env:TEMP)) {
         Join-Path $repoRoot ".tmp-dotnet-home"
-    } else {
+    }
+    else {
         Join-Path $env:TEMP "aci-dotnet-home"
     }
 
@@ -23,7 +24,9 @@ try {
 
     $projects = @(
         "tests\ACI.Core.Tests\ACI.Core.Tests.csproj",
-        "tests\ACI.Framework.Tests\ACI.Framework.Tests.csproj"
+        "tests\ACI.Framework.Tests\ACI.Framework.Tests.csproj",
+        "tests\ACI.LLM.Tests\ACI.LLM.Tests.csproj",
+        "tests\ACI.Server.Tests\ACI.Server.Tests.csproj"
     )
 
     foreach ($project in $projects) {
