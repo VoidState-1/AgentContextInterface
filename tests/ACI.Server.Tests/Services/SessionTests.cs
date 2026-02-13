@@ -9,8 +9,6 @@ namespace ACI.Server.Tests.Services;
 
 public class SessionTests
 {
-    // 测试点：单 Agent Session 不应注册 MailboxApp。
-    // 预期结果：Host 中不存在 mailbox 应用。
     [Fact]
     public void SingleAgent_ShouldNotRegisterMailbox()
     {
@@ -23,13 +21,10 @@ public class SessionTests
 
         var agent = session.GetAgent("solo")!;
         Assert.False(agent.Host.IsStarted("mailbox"));
-        // 尝试启动也不行，因为没注册
         var allApps = agent.Host.GetAllApps().Select(a => a.Name);
         Assert.DoesNotContain("mailbox", allApps);
     }
 
-    // 测试点：多 Agent Session 应自动注册 MailboxApp。
-    // 预期结果：每个 Agent 的 Host 中包含 mailbox 应用。
     [Fact]
     public void MultiAgent_ShouldRegisterMailbox()
     {
@@ -48,10 +43,8 @@ public class SessionTests
         Assert.Contains("mailbox", coderApps);
     }
 
-    // 测试点：频道桥接应将 scope=Session 消息转发给其他 Agent。
-    // 预期结果：Agent-A Post 的消息被 Agent-B 的订阅者收到。
     [Fact]
-    public void ChannelBridge_ShouldForwardSessionMessages()
+    public async Task ChannelBridge_ShouldForwardSessionMessages()
     {
         var profiles = new List<AgentProfile>
         {
@@ -65,21 +58,19 @@ public class SessionTests
         var agentA = session.GetAgent("a")!;
         var agentB = session.GetAgent("b")!;
 
-        // Agent-B 订阅频道
         agentB.LocalMessageChannel.Subscribe("test.channel", msg => receivedByB = msg);
-
-        // Agent-A 发送 scope=Session 消息
         agentA.LocalMessageChannel.Post("test.channel", "hello-from-a", MessageScope.Session);
+        Assert.Null(receivedByB);
+
+        await session.SimulateAsync("a", "drain wakeup queue");
 
         Assert.NotNull(receivedByB);
         Assert.Equal("hello-from-a", receivedByB!.Data);
         Assert.Equal("a", receivedByB.SourceAgentId);
     }
 
-    // 测试点：scope=Local 消息不应跨 Agent 传递。
-    // 预期结果：Agent-B 的订阅者不会收到 Agent-A 的 Local 消息。
     [Fact]
-    public void ChannelBridge_LocalScope_ShouldNotForward()
+    public async Task ChannelBridge_LocalScope_ShouldNotForward()
     {
         var profiles = new List<AgentProfile>
         {
@@ -96,11 +87,11 @@ public class SessionTests
         session.GetAgent("a")!.LocalMessageChannel
             .Post("local.ch", "local-only", MessageScope.Local);
 
+        await session.SimulateAsync("a", "drain wakeup queue");
+
         Assert.False(receivedByB);
     }
 
-    // 测试点：发送者本地也能收到自己的消息。
-    // 预期结果：Agent-A 发送 scope=Session 后，自身的订阅者也收到消息。
     [Fact]
     public void ChannelBridge_SenderAlsoReceivesLocally()
     {
@@ -122,8 +113,35 @@ public class SessionTests
         Assert.True(receivedByA);
     }
 
-    // 测试点：GetAgent 不存在的 ID 应返回 null。
-    // 预期结果：返回 null。
+    [Fact]
+    public async Task ChannelBridge_TargetedMessage_ShouldOnlyReachTargetAgent()
+    {
+        var profiles = new List<AgentProfile>
+        {
+            new() { Id = "a", Name = "Agent A" },
+            new() { Id = "b", Name = "Agent B" },
+            new() { Id = "c", Name = "Agent C" }
+        };
+
+        using var session = CreateSession(profiles);
+
+        ChannelMessage? receivedByB = null;
+        ChannelMessage? receivedByC = null;
+        session.GetAgent("b")!.LocalMessageChannel.Subscribe("target.ch", msg => receivedByB = msg);
+        session.GetAgent("c")!.LocalMessageChannel.Subscribe("target.ch", msg => receivedByC = msg);
+
+        session.GetAgent("a")!.LocalMessageChannel.Post(
+            "target.ch",
+            "target-only",
+            MessageScope.Session,
+            ["b"]);
+
+        await session.SimulateAsync("a", "drain wakeup queue");
+
+        Assert.NotNull(receivedByB);
+        Assert.Null(receivedByC);
+    }
+
     [Fact]
     public void GetAgent_NonExistent_ShouldReturnNull()
     {
@@ -137,8 +155,6 @@ public class SessionTests
         Assert.Null(session.GetAgent("nonexistent"));
     }
 
-    // 测试点：GetAllAgents 应返回所有 Agent。
-    // 预期结果：数量与配置一致。
     [Fact]
     public void GetAllAgents_ShouldReturnAll()
     {
@@ -155,8 +171,6 @@ public class SessionTests
         Assert.Equal(3, session.GetAllAgents().Count());
     }
 
-    // 测试点：InteractAsync 对不存在的 Agent 应抛 InvalidOperationException。
-    // 预期结果：抛出 InvalidOperationException。
     [Fact]
     public async Task InteractAsync_NonExistentAgent_ShouldThrow()
     {
@@ -171,8 +185,6 @@ public class SessionTests
             () => session.InteractAsync("missing", "hello"));
     }
 
-    // 测试点：InteractAsync 应正确执行并返回结果。
-    // 预期结果：Result.Success = true, Response 来自 LLM bridge。
     [Fact]
     public async Task InteractAsync_ShouldReturnLLMResult()
     {
@@ -190,8 +202,6 @@ public class SessionTests
         Assert.Equal("test response", result.Response);
     }
 
-    // 测试点：Dispose 应释放所有 Agent。
-    // 预期结果：重复 Dispose 不抛异常。
     [Fact]
     public void Dispose_ShouldBeIdempotent()
     {
@@ -205,7 +215,7 @@ public class SessionTests
         var ex = Record.Exception(() =>
         {
             session.Dispose();
-            session.Dispose(); // 重复 Dispose
+            session.Dispose();
         });
 
         Assert.Null(ex);

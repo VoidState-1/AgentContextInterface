@@ -12,7 +12,11 @@ public interface IMessageChannel
     /// <param name="channel">频道名称（如 "agent.mail", "file.opened"）</param>
     /// <param name="data">载荷（JSON 字符串，底层不解析）</param>
     /// <param name="scope">投递范围：Local=仅本 Agent，Session=所有 Agent</param>
-    void Post(string channel, string data, MessageScope scope = MessageScope.Local);
+    void Post(
+        string channel,
+        string data,
+        MessageScope scope = MessageScope.Local,
+        IReadOnlyList<string>? targetAgentIds = null);
 
     /// <summary>
     /// 订阅指定频道的消息。返回的 IDisposable 用于取消订阅。
@@ -45,6 +49,8 @@ public class ChannelMessage
 
     /// <summary>发送方 Agent ID</summary>
     public required string SourceAgentId { get; init; }
+
+    public IReadOnlyList<string>? TargetAgentIds { get; init; }
 
     /// <summary>时间戳</summary>
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;

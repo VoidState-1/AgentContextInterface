@@ -117,6 +117,39 @@ public class SessionManagerTests
         manager.CloseSession(session.SessionId);
     }
 
+    [Fact]
+    public void CreateSession_DuplicateAgentIds_ShouldThrow()
+    {
+        var manager = CreateManager(out _);
+        var request = new CreateSessionRequest
+        {
+            Agents =
+            [
+                new AgentProfileDto { Id = "planner", Name = "Planner A" },
+                new AgentProfileDto { Id = "planner", Name = "Planner B" }
+            ]
+        };
+
+        var ex = Assert.Throws<ArgumentException>(() => manager.CreateSession(request));
+        Assert.Contains("Duplicate agent id", ex.Message);
+    }
+
+    [Fact]
+    public void CreateSession_InvalidAgentId_ShouldThrow()
+    {
+        var manager = CreateManager(out _);
+        var request = new CreateSessionRequest
+        {
+            Agents =
+            [
+                new AgentProfileDto { Id = "invalid id", Name = "Planner" }
+            ]
+        };
+
+        var ex = Assert.Throws<ArgumentException>(() => manager.CreateSession(request));
+        Assert.Contains("Invalid agent id", ex.Message);
+    }
+
     private static SessionManager CreateManager(out SpyHubNotifier notifier)
     {
         notifier = new SpyHubNotifier();

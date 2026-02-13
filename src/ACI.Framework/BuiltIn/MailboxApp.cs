@@ -113,7 +113,10 @@ public class MailboxApp : ContextApp
         Context.MessageChannel.Post(
             MailChannel,
             JsonSerializer.Serialize(new MailEnvelope(to, content)),
-            MessageScope.Session);
+            MessageScope.Session,
+            string.Equals(to, "*", StringComparison.Ordinal)
+                ? null
+                : [to]);
 
         return Task.FromResult(ActionResult.Ok(
             message: $"Message sent to {to}",

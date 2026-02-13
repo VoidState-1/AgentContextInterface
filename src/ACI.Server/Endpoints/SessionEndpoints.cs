@@ -40,19 +40,26 @@ public static class SessionEndpoints
         // 创建新会话
         sessions.MapPost("/", (CreateSessionRequest? request, ISessionManager sessionManager) =>
         {
-            var session = sessionManager.CreateSession(request);
-            return Results.Created($"/api/sessions/{session.SessionId}", new
+            try
             {
-                session.SessionId,
-                session.CreatedAt,
-                AgentCount = session.AgentCount,
-                Agents = session.GetAllAgents().Select(a => new
+                var session = sessionManager.CreateSession(request);
+                return Results.Created($"/api/sessions/{session.SessionId}", new
                 {
-                    a.AgentId,
-                    a.Profile.Name,
-                    a.Profile.Role
-                })
-            });
+                    session.SessionId,
+                    session.CreatedAt,
+                    AgentCount = session.AgentCount,
+                    Agents = session.GetAllAgents().Select(a => new
+                    {
+                        a.AgentId,
+                        a.Profile.Name,
+                        a.Profile.Role
+                    })
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { Error = ex.Message });
+            }
         });
 
         // 获取单个会话

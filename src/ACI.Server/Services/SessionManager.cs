@@ -5,6 +5,7 @@ using ACI.LLM.Abstractions;
 using ACI.Server.Dto;
 using ACI.Server.Hubs;
 using ACI.Server.Settings;
+using System.Text.RegularExpressions;
 
 namespace ACI.Server.Services;
 
@@ -58,6 +59,10 @@ public enum SessionChangeType
 /// </summary>
 public class SessionManager : ISessionManager
 {
+    private static readonly Regex AgentIdRegex = new(
+        "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        RegexOptions.Compiled);
+
     private readonly ConcurrentDictionary<string, Session> _sessions = new();
     private readonly ConcurrentDictionary<string, List<(string AgentId, Action<WindowChangedEvent> Handler)>> _windowHandlers = new();
     private readonly ILLMBridge _llmBridge;
@@ -126,7 +131,41 @@ public class SessionManager : ISessionManager
             return [AgentProfile.Default()];
         }
 
-        return request.Agents.Select(a => a.ToProfile()).ToList();
+        var profiles = request.Agents.Select(a => a.ToProfile()).ToList();
+        ValidateProfiles(profiles);
+        return profiles;
+    }
+
+    /// <summary>
+    /// Validate profile list before building a session.
+    /// </summary>
+    private static void ValidateProfiles(IReadOnlyList<AgentProfile> profiles)
+    {
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var profile in profiles)
+        {
+            if (string.IsNullOrWhiteSpace(profile.Id))
+            {
+                throw new ArgumentException("Agent id cannot be empty.");
+            }
+
+            if (!AgentIdRegex.IsMatch(profile.Id))
+            {
+                throw new ArgumentException(
+                    $"Invalid agent id '{profile.Id}'. Use letters, numbers, '_' or '-', length 1-64.");
+            }
+
+            if (!seenIds.Add(profile.Id))
+            {
+                throw new ArgumentException($"Duplicate agent id '{profile.Id}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(profile.Name))
+            {
+                throw new ArgumentException($"Agent '{profile.Id}' name cannot be empty.");
+            }
+        }
     }
 
     /// <summary>

@@ -30,13 +30,18 @@ public class LocalMessageChannel : IMessageChannel
     }
 
     /// <inheritdoc />
-    public void Post(string channel, string data, MessageScope scope = MessageScope.Local)
+    public void Post(
+        string channel,
+        string data,
+        MessageScope scope = MessageScope.Local,
+        IReadOnlyList<string>? targetAgentIds = null)
     {
         var message = new ChannelMessage
         {
             Channel = channel,
             Data = data,
-            SourceAgentId = _ownerAgentId
+            SourceAgentId = _ownerAgentId,
+            TargetAgentIds = targetAgentIds
         };
 
         // 1. 始终分发给本地订阅者
