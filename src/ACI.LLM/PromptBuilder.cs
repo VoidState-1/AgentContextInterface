@@ -1,3 +1,6 @@
+using System.Text;
+using ACI.Framework.Runtime;
+
 namespace ACI.LLM;
 
 /// <summary>
@@ -45,9 +48,30 @@ public static class PromptBuilder
 
     /// <summary>
     /// 返回完整系统提示词。
+    /// 传入 AgentProfile 时会追加 Agent 身份和角色描述。
     /// </summary>
-    public static string BuildSystemPrompt()
+    public static string BuildSystemPrompt(AgentProfile? profile = null)
     {
-        return SystemPromptTemplate;
+        if (profile == null || profile.Id == "default")
+        {
+            return SystemPromptTemplate;
+        }
+
+        var sb = new StringBuilder(SystemPromptTemplate);
+
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("## Your Identity");
+        sb.AppendLine($"- Agent ID: {profile.Id}");
+        sb.AppendLine($"- Name: {profile.Name}");
+
+        if (!string.IsNullOrWhiteSpace(profile.Role))
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Your Role");
+            sb.AppendLine(profile.Role);
+        }
+
+        return sb.ToString();
     }
 }
