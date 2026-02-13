@@ -34,7 +34,8 @@ public class FrameworkHostTests
         var clock = new FakeSeqClock(seed: 10);
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
-        var context = new RuntimeContext(windows, events, clock, new ContextManager(clock));
+        var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
+            AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -67,7 +68,8 @@ public class FrameworkHostTests
         var clock = new FakeSeqClock(seed: 100);
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
-        var context = new RuntimeContext(windows, events, clock, new ContextManager(clock));
+        var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
+            AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -133,7 +135,8 @@ public class FrameworkHostTests
         var clock = new FakeSeqClock();
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
-        return new RuntimeContext(windows, events, clock, new ContextManager(clock));
+        return new RuntimeContext(windows, events, clock, new ContextManager(clock),
+            AgentProfile.Default(), new LocalMessageChannel("test"));
     }
 
     private sealed class TestApp : ContextApp

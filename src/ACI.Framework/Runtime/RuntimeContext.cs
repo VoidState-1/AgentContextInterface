@@ -1,6 +1,5 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
-using ACI.Core.Services;
 using System.Threading;
 
 namespace ACI.Framework.Runtime;
@@ -14,6 +13,8 @@ public class RuntimeContext : IContext
     private readonly IEventBus _events;
     private readonly ISeqClock _clock;
     private readonly IContextManager _context;
+    private readonly AgentProfile _profile;
+    private readonly LocalMessageChannel _messageChannel;
     private readonly IServiceProvider? _serviceProvider;
 
     // 窗口刷新委托（由 FrameworkHost 设置）
@@ -27,12 +28,16 @@ public class RuntimeContext : IContext
         IEventBus events,
         ISeqClock clock,
         IContextManager context,
+        AgentProfile profile,
+        LocalMessageChannel messageChannel,
         IServiceProvider? serviceProvider = null)
     {
         _windows = windows;
         _events = events;
         _clock = clock;
         _context = context;
+        _profile = profile;
+        _messageChannel = messageChannel;
         _serviceProvider = serviceProvider;
     }
 
@@ -40,6 +45,8 @@ public class RuntimeContext : IContext
     public IEventBus Events => _events;
     public ISeqClock Clock => _clock;
     public IContextManager Context => _context;
+    public AgentProfile Profile => _profile;
+    public IMessageChannel MessageChannel => _messageChannel;
 
     /// <summary>
     /// 设置刷新处理器（由 FrameworkHost 调用）
@@ -50,7 +57,7 @@ public class RuntimeContext : IContext
     }
 
     /// <summary>
-    /// 配置后台任务处理器（由 SessionContext 调用）
+    /// 配置后台任务处理器（由 SessionContext / AgentContext 调用）
     /// </summary>
     public void ConfigureBackgroundTaskHandlers(
         Func<string, Func<CancellationToken, Task>, string?, string> startHandler,

@@ -75,7 +75,8 @@ public class SessionContext : IDisposable
         Windows.OnChanged += OnWindowChanged;
 
         // 4. 初始化 framework 层
-        Runtime = new RuntimeContext(Windows, Events, Clock, Context);
+        Runtime = new RuntimeContext(Windows, Events, Clock, Context,
+            AgentProfile.Default(), new LocalMessageChannel("default"));
         _taskRunner = new SessionTaskRunner(Events, Clock);
         Runtime.ConfigureBackgroundTaskHandlers(
             (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),

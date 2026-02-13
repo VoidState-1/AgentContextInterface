@@ -149,7 +149,8 @@ public class InteractionControllerTests
         var events = new SpyEventBus();
         var windows = new WindowManager(clock);
         var context = new ContextManager(clock);
-        var runtime = new RuntimeContext(windows, events, clock, context);
+        var runtime = new RuntimeContext(windows, events, clock, context,
+            AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(runtime);
         host.Register(new DemoInteractionApp());
         host.Launch("demo_app");

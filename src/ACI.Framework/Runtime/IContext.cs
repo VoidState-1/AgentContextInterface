@@ -60,4 +60,14 @@ public interface IContext
     /// 获取服务
     /// </summary>
     T? GetService<T>() where T : class;
+
+    /// <summary>
+    /// 当前 Agent 的身份信息（只读）。
+    /// </summary>
+    AgentProfile Profile { get; }
+
+    /// <summary>
+    /// App 间消息频道（通用发布/订阅通信原语）。
+    /// </summary>
+    IMessageChannel MessageChannel { get; }
 }
