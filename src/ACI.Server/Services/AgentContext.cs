@@ -1,6 +1,7 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using ACI.Core.Services;
+using ACI.Framework.BuiltIn;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
@@ -10,14 +11,21 @@ using System.Threading;
 namespace ACI.Server.Services;
 
 /// <summary>
-/// 单个会话的运行时容器，聚合 Core / Framework / LLM 三层服务。
+/// 单个 Agent 的运行时容器，聚合 Core / Framework / LLM 三层服务。
+/// 原 SessionContext 重命名而来，现在代表一个 Agent 而非一个 Session。
 /// </summary>
-public class SessionContext : IDisposable
+public class AgentContext : IDisposable
 {
     /// <summary>
-    /// 对话ID信息
+    /// Agent 身份信息
     /// </summary>
-    public string SessionId { get; }
+    public AgentProfile Profile { get; }
+
+    /// <summary>
+    /// Agent ID（快捷访问）
+    /// </summary>
+    public string AgentId => Profile.Id;
+
     public DateTime CreatedAt { get; }
 
     /// <summary>
@@ -35,6 +43,11 @@ public class SessionContext : IDisposable
     public FrameworkHost Host { get; }
 
     /// <summary>
+    /// 消息频道（供 Session 层桥接使用）
+    /// </summary>
+    public LocalMessageChannel LocalMessageChannel { get; }
+
+    /// <summary>
     /// LLM 层服务和执行器
     /// </summary>
     public InteractionController Interaction { get; }
@@ -48,16 +61,22 @@ public class SessionContext : IDisposable
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
     /// <summary>
-    /// 构建并初始化会话上下文。
+    /// 构建并初始化 Agent 上下文。
     /// </summary>
-    public SessionContext(
-        string sessionId,
+    /// <param name="profile">Agent 身份配置</param>
+    /// <param name="llmBridge">LLM 桥接</param>
+    /// <param name="options">ACI 配置选项</param>
+    /// <param name="registerMailbox">是否注册 MailboxApp（多 Agent 时为 true）</param>
+    /// <param name="configureApps">外部应用注册回调</param>
+    public AgentContext(
+        AgentProfile profile,
         ILLMBridge llmBridge,
         ACIOptions options,
+        bool registerMailbox = false,
         Action<FrameworkHost>? configureApps = null)
     {
-        // 1. 初始化 Session
-        SessionId = sessionId;
+        // 1. 初始化身份
+        Profile = profile;
         CreatedAt = DateTime.UtcNow;
 
         // 2. 初始化 RenderOptions
@@ -74,9 +93,9 @@ public class SessionContext : IDisposable
         Context = new ContextManager(Clock);
         Windows.OnChanged += OnWindowChanged;
 
-        // 4. 初始化 framework 层
-        Runtime = new RuntimeContext(Windows, Events, Clock, Context,
-            AgentProfile.Default(), new LocalMessageChannel("default"));
+        // 4. 初始化 Framework 层（含 MessageChannel）
+        LocalMessageChannel = new LocalMessageChannel(profile.Id);
+        Runtime = new RuntimeContext(Windows, Events, Clock, Context, profile, LocalMessageChannel);
         _taskRunner = new SessionTaskRunner(Events, Clock);
         Runtime.ConfigureBackgroundTaskHandlers(
             (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),
@@ -88,14 +107,13 @@ public class SessionContext : IDisposable
         ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
         // 6. 注册内置应用
-        RegisterBuiltInApps();
+        RegisterBuiltInApps(registerMailbox);
         Host.Start("activity_log");
 
         configureApps?.Invoke(Host);
-        // 启动器窗口改为会话初始化即常驻。
         Host.Launch("launcher");
 
-        // 7. 初始化 InteractionController
+        // 7. 初始化 InteractionController（使用 Profile 构建提示词）
         Interaction = new InteractionController(
             llmBridge,
             Host,
@@ -108,18 +126,24 @@ public class SessionContext : IDisposable
                 MinConversationTokens = minConversationTokens,
                 PruneTargetTokens = pruneTargetTokens
             },
-            startBackgroundTask: StartInteractionBackgroundTask
+            startBackgroundTask: StartInteractionBackgroundTask,
+            agentProfile: profile
         );
     }
 
     /// <summary>
     /// 注册内置应用。
     /// </summary>
-    private void RegisterBuiltInApps()
+    private void RegisterBuiltInApps(bool registerMailbox)
     {
-        Host.Register(new Framework.BuiltIn.AppLauncher(() => Host.GetApps().ToList()));
-        Host.Register(new Framework.BuiltIn.ActivityLog());
-        Host.Register(new Framework.BuiltIn.FileExplorerApp());
+        Host.Register(new AppLauncher(() => Host.GetApps().ToList()));
+        Host.Register(new ActivityLog());
+        Host.Register(new FileExplorerApp());
+
+        if (registerMailbox)
+        {
+            Host.Register(new MailboxApp());
+        }
     }
 
     /// <summary>
@@ -143,20 +167,13 @@ public class SessionContext : IDisposable
     /// </summary>
     private async Task RunSerializedActionAsync(Func<Task> action, CancellationToken ct = default)
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         try
         {
             await RunSerializedAsync(async () =>
             {
-                if (_disposed)
-                {
-                    return true;
-                }
-
+                if (_disposed) return true;
                 await action();
                 return true;
             }, ct);
@@ -217,7 +234,7 @@ public class SessionContext : IDisposable
     }
 
     /// <summary>
-    /// 释放会话资源。
+    /// 释放资源。
     /// </summary>
     public void Dispose()
     {

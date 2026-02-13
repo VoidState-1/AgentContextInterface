@@ -26,6 +26,7 @@ public class InteractionController
     private readonly IWindowManager _windowManager;
     private readonly ActionExecutor _actionExecutor;
     private readonly Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTask;
+    private readonly AgentProfile? _agentProfile;
 
     /// <summary>
     /// 渲染与编排组件。
@@ -50,13 +51,15 @@ public class InteractionController
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
         RenderOptions? renderOptions = null,
-        Func<string, Func<CancellationToken, Task>, string?, string>? startBackgroundTask = null)
+        Func<string, Func<CancellationToken, Task>, string?, string>? startBackgroundTask = null,
+        AgentProfile? agentProfile = null)
     {
         _host = host;
         _contextManager = contextManager;
         _windowManager = windowManager;
         _actionExecutor = actionExecutor;
         _startBackgroundTask = startBackgroundTask;
+        _agentProfile = agentProfile;
         _renderer = renderer ?? new ContextRenderer();
         _renderOptions = renderOptions ?? new RenderOptions();
 
@@ -297,7 +300,7 @@ public class InteractionController
         {
             Id = "system_prompt",
             Type = ContextItemType.System,
-            Content = PromptBuilder.BuildSystemPrompt()
+            Content = PromptBuilder.BuildSystemPrompt(_agentProfile)
         });
 
         _initialized = true;

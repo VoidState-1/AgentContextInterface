@@ -123,10 +123,10 @@ public class SessionEndToEndTests
         Assert.True(result.Steps == null || result.Steps.Count == 0);
     }
 
-    private static SessionContext CreateSession(ILLMBridge llm)
+    private static AgentContext CreateSession(ILLMBridge llm)
     {
-        return new SessionContext(
-            "e2e-session",
+        return new AgentContext(
+            new AgentProfile { Id = "e2e-session", Name = "E2E Agent" },
             llm,
             new ACIOptions
             {

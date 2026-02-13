@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using ACI.Core.Abstractions;
+using ACI.Framework.Runtime;
 using ACI.LLM.Abstractions;
 using ACI.Server.Hubs;
 using ACI.Server.Settings;
@@ -12,14 +13,14 @@ namespace ACI.Server.Services;
 public interface ISessionManager
 {
     /// <summary>
-    /// 创建新会话
+    /// 创建新会话（当前使用默认单 Agent 模式，步骤 6 将改造为多 Agent）
     /// </summary>
-    SessionContext CreateSession(string? sessionId = null);
+    AgentContext CreateSession(string? sessionId = null);
 
     /// <summary>
     /// 获取会话
     /// </summary>
-    SessionContext? GetSession(string sessionId);
+    AgentContext? GetSession(string sessionId);
 
     /// <summary>
     /// 关闭会话
@@ -52,16 +53,16 @@ public enum SessionChangeType
 }
 
 /// <summary>
-/// 会话管理器实现
+/// 会话管理器实现（当前使用 AgentContext 作为过渡，步骤 6 将改为管理 Session）
 /// </summary>
 public class SessionManager : ISessionManager
 {
-    private readonly ConcurrentDictionary<string, SessionContext> _sessions = new();
+    private readonly ConcurrentDictionary<string, AgentContext> _sessions = new();
     private readonly ConcurrentDictionary<string, Action<WindowChangedEvent>> _windowHandlers = new();
     private readonly ILLMBridge _llmBridge;
     private readonly IACIHubNotifier _hubNotifier;
     private readonly ACIOptions _options;
-    private readonly Action<Framework.Runtime.FrameworkHost>? _configureApps;
+    private readonly Action<FrameworkHost>? _configureApps;
 
     public event Action<SessionChangeEvent>? OnSessionChange;
 
@@ -69,7 +70,7 @@ public class SessionManager : ISessionManager
         ILLMBridge llmBridge,
         IACIHubNotifier hubNotifier,
         ACIOptions options,
-        Action<Framework.Runtime.FrameworkHost>? configureApps = null)
+        Action<FrameworkHost>? configureApps = null)
     {
         _llmBridge = llmBridge;
         _hubNotifier = hubNotifier;
@@ -77,11 +78,13 @@ public class SessionManager : ISessionManager
         _configureApps = configureApps;
     }
 
-    public SessionContext CreateSession(string? sessionId = null)
+    public AgentContext CreateSession(string? sessionId = null)
     {
         sessionId ??= Guid.NewGuid().ToString("N");
 
-        var context = new SessionContext(sessionId, _llmBridge, _options, _configureApps);
+        // 当前过渡期：使用默认 Profile，单 Agent 模式
+        var profile = new AgentProfile { Id = sessionId, Name = "Default Agent" };
+        var context = new AgentContext(profile, _llmBridge, _options, configureApps: _configureApps);
         _sessions[sessionId] = context;
         BindWindowNotifications(context);
 
@@ -90,7 +93,7 @@ public class SessionManager : ISessionManager
         return context;
     }
 
-    public SessionContext? GetSession(string sessionId)
+    public AgentContext? GetSession(string sessionId)
     {
         return _sessions.GetValueOrDefault(sessionId);
     }
@@ -110,16 +113,16 @@ public class SessionManager : ISessionManager
         return _sessions.Keys;
     }
 
-    private void BindWindowNotifications(SessionContext context)
+    private void BindWindowNotifications(AgentContext context)
     {
-        Action<WindowChangedEvent> handler = evt => _ = NotifyWindowChangeAsync(context.SessionId, evt);
+        Action<WindowChangedEvent> handler = evt => _ = NotifyWindowChangeAsync(context.AgentId, evt);
         context.Windows.OnChanged += handler;
-        _windowHandlers[context.SessionId] = handler;
+        _windowHandlers[context.AgentId] = handler;
     }
 
-    private void UnbindWindowNotifications(SessionContext context)
+    private void UnbindWindowNotifications(AgentContext context)
     {
-        if (_windowHandlers.TryRemove(context.SessionId, out var handler))
+        if (_windowHandlers.TryRemove(context.AgentId, out var handler))
         {
             context.Windows.OnChanged -= handler;
         }

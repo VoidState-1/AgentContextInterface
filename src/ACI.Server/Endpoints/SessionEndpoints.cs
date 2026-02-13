@@ -21,7 +21,7 @@ public static class SessionEndpoints
                 .Where(s => s != null)
                 .Select(s => new
                 {
-                    s!.SessionId,
+                    s!.AgentId,
                     s.CreatedAt
                 });
 
@@ -32,9 +32,9 @@ public static class SessionEndpoints
         group.MapPost("/", (ISessionManager sessionManager) =>
         {
             var session = sessionManager.CreateSession();
-            return Results.Created($"/api/sessions/{session.SessionId}", new
+            return Results.Created($"/api/sessions/{session.AgentId}", new
             {
-                session.SessionId,
+                session.AgentId,
                 session.CreatedAt
             });
         });
@@ -50,7 +50,7 @@ public static class SessionEndpoints
 
             return Results.Ok(new
             {
-                session.SessionId,
+                session.AgentId,
                 session.CreatedAt,
                 WindowCount = session.Windows.GetAll().Count()
             });
