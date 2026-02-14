@@ -284,6 +284,89 @@ public class SessionManagerTests
         manager.CloseSession(session.SessionId);
     }
 
+    // 测试点：关闭自动保存开关后，请求自动保存不应写入快照。
+    // 预期结果：saveCount 保持 0，存储中不存在对应会话。
+    [Fact]
+    public async Task RequestAutoSave_Disabled_ShouldSkipSave()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = false,
+                        DebounceMilliseconds = 10
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        manager.RequestAutoSave(session.SessionId);
+        await Task.Delay(80);
+
+        Assert.Equal(0, store.GetSaveCount(session.SessionId));
+        Assert.False(await store.ExistsAsync(session.SessionId));
+        manager.CloseSession(session.SessionId);
+    }
+
+    // 测试点：会话关闭前存在待执行自动保存时，应取消该保存任务。
+    // 预期结果：关闭后不发生保存，saveCount 保持 0。
+    [Fact]
+    public async Task RequestAutoSave_CloseSessionBeforeDebounce_ShouldCancelPendingSave()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = true,
+                        DebounceMilliseconds = 200
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        manager.RequestAutoSave(session.SessionId);
+        manager.CloseSession(session.SessionId);
+        await Task.Delay(260);
+
+        Assert.Equal(0, store.GetSaveCount(session.SessionId));
+        Assert.False(await store.ExistsAsync(session.SessionId));
+    }
+
+    // 测试点：对不存在会话调用自动保存请求应直接忽略。
+    // 预期结果：不会触发任何保存调用。
+    [Fact]
+    public async Task RequestAutoSave_MissingSession_ShouldNoOp()
+    {
+        var manager = CreateManager(out _, out var store);
+
+        manager.RequestAutoSave("missing-session");
+        await Task.Delay(80);
+
+        Assert.Equal(0, store.GetTotalSaveCount());
+    }
+
     [Fact]
     public async Task LoadSessionAsync_UnsupportedSnapshotVersion_ShouldThrow()
     {
@@ -299,6 +382,18 @@ public class SessionManagerTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => manager.LoadSessionAsync(session.SessionId));
+    }
+
+    // 测试点：删除不存在的已保存会话应返回 false。
+    // 预期结果：不抛异常，返回 false。
+    [Fact]
+    public async Task DeleteSavedSessionAsync_Missing_ShouldReturnFalse()
+    {
+        var manager = CreateManager(out _, out _);
+
+        var deleted = await manager.DeleteSavedSessionAsync("missing");
+
+        Assert.False(deleted);
     }
 
     [Fact]
@@ -370,7 +465,7 @@ public class SessionManagerTests
 
     private static SessionManager CreateManager(
         out SpyHubNotifier notifier,
-        out ISessionStore store,
+        out InMemorySessionStore store,
         ACIOptions? options = null)
     {
         notifier = new SpyHubNotifier();
@@ -498,6 +593,11 @@ public class SessionManagerTests
         public int GetSaveCount(string sessionId)
         {
             return _saveCounts.GetValueOrDefault(sessionId);
+        }
+
+        public int GetTotalSaveCount()
+        {
+            return _saveCounts.Values.Sum();
         }
     }
 }

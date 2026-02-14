@@ -77,3 +77,6 @@ ehthumbs.db
 # tempdoc
 TODO/
 Plan/
+
+# data
+src/ACI.Server/data/

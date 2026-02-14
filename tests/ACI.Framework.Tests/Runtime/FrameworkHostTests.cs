@@ -4,6 +4,7 @@ using ACI.Core.Services;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
 using ACI.Tests.Common.Fakes;
+using System.Text.Json;
 
 namespace ACI.Framework.Tests.Runtime;
 
@@ -130,6 +131,45 @@ public class FrameworkHostTests
         Assert.False(host.IsStarted("demo"));
     }
 
+    // 测试点：恢复过程中单个 App 抛异常时，不应阻断其他 App 恢复。
+    // 预期结果：异常 App 被跳过，健康 App 仍完成 OnRestoreState。
+    [Fact]
+    public void RestoreAppSnapshots_WhenOneAppThrows_ShouldContinueRestoringOthers()
+    {
+        var runtime = CreateRuntimeContext();
+        var host = new FrameworkHost(runtime);
+        var brokenApp = new ThrowOnRestoreApp("broken");
+        var healthyApp = new RestoreFlagApp("healthy");
+        host.Register(brokenApp);
+        host.Register(healthyApp);
+
+        var snapshots = new List<AppSnapshot>
+        {
+            new()
+            {
+                Name = "broken",
+                IsStarted = true,
+                ManagedWindowIds = [],
+                WindowIntents = new Dictionary<string, string?>(),
+                StateData = new Dictionary<string, JsonElement>()
+            },
+            new()
+            {
+                Name = "healthy",
+                IsStarted = true,
+                ManagedWindowIds = [],
+                WindowIntents = new Dictionary<string, string?>(),
+                StateData = new Dictionary<string, JsonElement>()
+            }
+        };
+
+        var ex = Record.Exception(() => host.RestoreAppSnapshots(snapshots));
+
+        Assert.Null(ex);
+        Assert.True(host.IsStarted("healthy"));
+        Assert.True(healthyApp.Restored);
+    }
+
     private static RuntimeContext CreateRuntimeContext()
     {
         var clock = new FakeSeqClock();
@@ -196,6 +236,64 @@ public class FrameworkHostTests
                         Handler = _ => Task.FromResult(ActionResult.Ok())
                     }
                 ]
+            };
+        }
+    }
+
+    private sealed class ThrowOnRestoreApp : ContextApp
+    {
+        private readonly string _name;
+
+        public ThrowOnRestoreApp(string name)
+        {
+            _name = name;
+        }
+
+        public override string Name => _name;
+
+        public override void OnRestoreState()
+        {
+            throw new InvalidOperationException("restore failed");
+        }
+
+        public override ContextWindow CreateWindow(string? intent)
+        {
+            const string windowId = "broken_window";
+            RegisterWindow(windowId);
+            return new ContextWindow
+            {
+                Id = windowId,
+                Content = new Text("broken")
+            };
+        }
+    }
+
+    private sealed class RestoreFlagApp : ContextApp
+    {
+        private readonly string _name;
+
+        public RestoreFlagApp(string name)
+        {
+            _name = name;
+        }
+
+        public override string Name => _name;
+
+        public bool Restored { get; private set; }
+
+        public override void OnRestoreState()
+        {
+            Restored = true;
+        }
+
+        public override ContextWindow CreateWindow(string? intent)
+        {
+            const string windowId = "healthy_window";
+            RegisterWindow(windowId);
+            return new ContextWindow
+            {
+                Id = windowId,
+                Content = new Text("healthy")
             };
         }
     }

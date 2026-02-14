@@ -1,6 +1,8 @@
 param(
     [switch]$NoBuild,
-    [switch]$CollectCoverage
+    [switch]$CollectCoverage,
+    [string[]]$Projects,
+    [string]$Filter
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -20,27 +22,60 @@ try {
     }
 
     $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
     $env:MSBuildEnableWorkloadResolver = "false"
 
-    $projects = @(
+    $defaultProjects = @(
         "tests\ACI.Core.Tests\ACI.Core.Tests.csproj",
         "tests\ACI.Framework.Tests\ACI.Framework.Tests.csproj",
         "tests\ACI.LLM.Tests\ACI.LLM.Tests.csproj",
-        "tests\ACI.Server.Tests\ACI.Server.Tests.csproj"
+        "tests\ACI.Server.Tests\ACI.Server.Tests.csproj",
+        "tests\ACI.Storage.Tests\ACI.Storage.Tests.csproj"
     )
 
-    foreach ($project in $projects) {
+    $projectMap = @{
+        "core"      = "tests\ACI.Core.Tests\ACI.Core.Tests.csproj"
+        "framework" = "tests\ACI.Framework.Tests\ACI.Framework.Tests.csproj"
+        "llm"       = "tests\ACI.LLM.Tests\ACI.LLM.Tests.csproj"
+        "server"    = "tests\ACI.Server.Tests\ACI.Server.Tests.csproj"
+        "storage"   = "tests\ACI.Storage.Tests\ACI.Storage.Tests.csproj"
+    }
+
+    $selectedProjects = if ($Projects -and $Projects.Count -gt 0) {
+        $resolved = @()
+        foreach ($project in $Projects) {
+            $key = $project.ToLowerInvariant()
+            if ($projectMap.ContainsKey($key)) {
+                $resolved += $projectMap[$key]
+                continue
+            }
+
+            $resolved += $project
+        }
+        $resolved
+    }
+    else {
+        $defaultProjects
+    }
+
+    foreach ($project in $selectedProjects) {
         $args = @(
             "test",
             $project,
             "--nologo",
             "-m:1",
-            "-p:BuildInParallel=false"
+            "-p:BuildInParallel=false",
+            "-p:MSBuildEnableWorkloadResolver=false"
         )
 
         if ($NoBuild) {
             $args += "--no-build"
             $args += "--no-restore"
+        }
+
+        if (![string]::IsNullOrWhiteSpace($Filter)) {
+            $args += "--filter"
+            $args += $Filter
         }
 
         if ($CollectCoverage) {

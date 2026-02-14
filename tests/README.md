@@ -11,6 +11,9 @@ This folder now contains the phase-0 testing scaffold for ACI.
 - `Common/`: Shared helpers used by all test projects.
 - `ACI.Core.Tests/`: Unit tests focused on `ACI.Core`.
 - `ACI.Framework.Tests/`: Unit tests focused on `ACI.Framework`.
+- `ACI.LLM.Tests/`: Unit tests focused on `ACI.LLM`.
+- `ACI.Server.Tests/`: Service/end-to-end tests for `ACI.Server`.
+- `ACI.Storage.Tests/`: Unit tests focused on `ACI.Storage`.
 
 ## Naming Rules
 - Test file: `<TargetType>Tests.cs`
@@ -26,3 +29,5 @@ This folder now contains the phase-0 testing scaffold for ACI.
 - One-command script: `tests/run-tests.ps1`
 - With coverage: `tests/run-tests.ps1 -CollectCoverage`
 - Offline/no-restore run: `tests/run-tests.ps1 -NoBuild`
+- Run selected projects: `tests/run-tests.ps1 -Projects core,framework`
+- Run with filter: `tests/run-tests.ps1 -Projects server -Filter "FullyQualifiedName~SessionManagerTests"`
