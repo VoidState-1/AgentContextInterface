@@ -9,27 +9,27 @@ public class AgentMessage
     /// <summary>
     /// 消息唯一 ID。
     /// </summary>
-    public required string Id { get; init; }
+    public string Id { get; set; } = "";
 
     /// <summary>
     /// 发送方 Agent ID。
     /// </summary>
-    public required string FromAgentId { get; init; }
+    public string FromAgentId { get; set; } = "";
 
     /// <summary>
     /// 接收方 Agent ID。
     /// </summary>
-    public required string ToAgentId { get; init; }
+    public string ToAgentId { get; set; } = "";
 
     /// <summary>
     /// 消息内容。
     /// </summary>
-    public required string Content { get; init; }
+    public string Content { get; set; } = "";
 
     /// <summary>
     /// 时间戳。
     /// </summary>
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
     /// <summary>
     /// 是否已读。

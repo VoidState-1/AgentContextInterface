@@ -223,11 +223,17 @@ public record WindowRefreshedEvent(
 ) : IEvent;
 
 /// <summary>
-/// 内存状态存储实现
+/// 内存状态存储实现（支持 Export/Import 持久化）
 /// </summary>
 public class InMemoryAppState : IAppState
 {
     private readonly Dictionary<string, object> _data = [];
+
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
 
     public void Set<T>(string key, T value)
     {
@@ -236,10 +242,72 @@ public class InMemoryAppState : IAppState
 
     public T? Get<T>(string key)
     {
-        return _data.TryGetValue(key, out var value) ? (T)value : default;
+        if (!_data.TryGetValue(key, out var value)) return default;
+
+        // 如果值已经是目标类型，直接返回
+        if (value is T typed) return typed;
+
+        // 如果值是 JsonElement（从 Import 导入），反序列化为目标类型
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            try
+            {
+                var deserialized = System.Text.Json.JsonSerializer.Deserialize<T>(
+                    jsonElement.GetRawText(), _jsonOptions);
+                if (deserialized != null)
+                {
+                    // 缓存反序列化结果，下次直接使用
+                    _data[key] = deserialized;
+                }
+                return deserialized;
+            }
+            catch
+            {
+                return default;
+            }
+        }
+
+        // 尝试强制转换
+        try { return (T)value; }
+        catch { return default; }
     }
 
     public bool Has(string key) => _data.ContainsKey(key);
 
     public void Clear() => _data.Clear();
+
+    /// <summary>
+    /// 导出所有状态为 JsonElement 字典。
+    /// </summary>
+    public IReadOnlyDictionary<string, System.Text.Json.JsonElement> Export()
+    {
+        var result = new Dictionary<string, System.Text.Json.JsonElement>();
+        foreach (var (key, value) in _data)
+        {
+            if (value is System.Text.Json.JsonElement je)
+            {
+                result[key] = je;
+            }
+            else
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(value, value.GetType(), _jsonOptions);
+                result[key] = System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 从 JsonElement 字典导入状态（覆盖现有数据）。
+    /// 值保持 JsonElement 形式，在 Get 时延迟反序列化。
+    /// </summary>
+    public void Import(IReadOnlyDictionary<string, System.Text.Json.JsonElement> data)
+    {
+        _data.Clear();
+        foreach (var (key, value) in data)
+        {
+            // 存储为 JsonElement，在 Get<T> 时延迟反序列化
+            _data[key] = value.Clone();
+        }
+    }
 }

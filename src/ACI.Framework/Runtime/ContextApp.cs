@@ -36,6 +36,20 @@ public abstract class ContextApp
     private readonly List<string> _managedWindowIds = [];
 
     /// <summary>
+    /// 获取该应用管理的窗口 ID 列表（供框架持久化使用）
+    /// </summary>
+    internal IReadOnlyList<string> GetManagedWindowIdsInternal() => _managedWindowIds;
+
+    /// <summary>
+    /// 批量恢复窗口 ID 列表（供框架恢复使用）
+    /// </summary>
+    internal void RestoreManagedWindowIds(IEnumerable<string> windowIds)
+    {
+        _managedWindowIds.Clear();
+        _managedWindowIds.AddRange(windowIds);
+    }
+
+    /// <summary>
     /// 内部初始化（框架调用）
     /// </summary>
     internal void Initialize(IAppState state, IContext context)
@@ -79,6 +93,20 @@ public abstract class ContextApp
     /// 应用销毁时调用
     /// </summary>
     public virtual void OnDestroy() { }
+
+    /// <summary>
+    /// 持久化前回调：将所有内部状态刷入 IAppState。
+    /// 框架在创建快照前调用此方法。
+    /// 应用应把所有不在 IAppState 中的内部字段写入 State。
+    /// </summary>
+    public virtual void OnSaveState() { }
+
+    /// <summary>
+    /// 恢复后回调：从 IAppState 中重建内部状态。
+    /// 框架在注入 IAppState 后、重建窗口前调用此方法。
+    /// 应用应从 State 中读取数据并重建内部字段。
+    /// </summary>
+    public virtual void OnRestoreState() { }
 
     /// <summary>
     /// 创建主窗口

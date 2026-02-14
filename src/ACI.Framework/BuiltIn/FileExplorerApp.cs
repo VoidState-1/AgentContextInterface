@@ -298,9 +298,9 @@ public sealed class FileExplorerApp : ContextApp
 
     private sealed class FsEntry
     {
-        public required string Name { get; init; }
-        public required string FullPath { get; init; }
-        public required bool IsDirectory { get; init; }
-        public long SizeBytes { get; init; }
+        public string Name { get; set; } = "";
+        public string FullPath { get; set; } = "";
+        public bool IsDirectory { get; set; }
+        public long SizeBytes { get; set; }
     }
 }

@@ -23,6 +23,10 @@ public class ActivityLog : ContextApp
     private IDisposable? _appSub;
     private IDisposable? _taskSub;
 
+    // 持久化键
+    private const string LogsStateKey = "activity_logs";
+    private const string CounterStateKey = "activity_counter";
+
     /// <summary>
     /// 应用名称。
     /// </summary>
@@ -61,6 +65,65 @@ public class ActivityLog : ContextApp
 
         _taskSub?.Dispose();
         _taskSub = null;
+    }
+
+    /// <summary>
+    /// 将 _logs 和 _windowCounter 刷入 IAppState。
+    /// </summary>
+    public override void OnSaveState()
+    {
+        State.Set(LogsStateKey, _logs.Select(l => new LogItemDto
+        {
+            Seq = l.Seq,
+            WindowId = l.WindowId,
+            Text = l.Text,
+            IsPersistent = l.IsPersistent
+        }).ToList());
+        State.Set(CounterStateKey, _windowCounter);
+    }
+
+    /// <summary>
+    /// 从 IAppState 恢复 _logs 和 _windowCounter，然后重建日志窗口。
+    /// </summary>
+    public override void OnRestoreState()
+    {
+        _windowCounter = State.Get<int>(CounterStateKey);
+
+        var savedLogs = State.Get<List<LogItemDto>>(LogsStateKey);
+        _logs.Clear();
+
+        if (savedLogs == null) return;
+
+        foreach (var dto in savedLogs)
+        {
+            var logItem = new LogItem
+            {
+                Seq = dto.Seq,
+                WindowId = dto.WindowId,
+                Text = dto.Text,
+                IsPersistent = dto.IsPersistent
+            };
+            _logs.Add(logItem);
+
+            // 重建日志窗口
+            var window = new Window
+            {
+                Id = dto.WindowId,
+                Content = new Text(dto.Text),
+                Options = new WindowOptions
+                {
+                    RenderMode = RenderMode.Compact,
+                    Closable = false,
+                    Important = dto.IsPersistent
+                },
+                AppName = Name
+            };
+            window.Meta.CreatedAt = dto.Seq;
+            window.Meta.UpdatedAt = dto.Seq;
+
+            Context.Windows.Add(window);
+            RegisterWindow(dto.WindowId);
+        }
     }
 
     /// <summary>
@@ -143,9 +206,6 @@ public class ActivityLog : ContextApp
     /// </summary>
     public override ContextWindow CreateWindow(string? intent)
     {
-        // 1. 构建主窗口内容。
-        // 2. 暴露清理日志与关闭窗口两个动作。
-        // 3. 返回主窗口定义。
         return new ContextWindow
         {
             Id = "activity_log_main",
@@ -189,28 +249,24 @@ public class ActivityLog : ContextApp
     }
 
     /// <summary>
-    /// 单条日志记录模型。
+    /// 单条日志记录模型（内部使用）。
     /// </summary>
     private class LogItem
     {
-        /// <summary>
-        /// 事件序号。
-        /// </summary>
         public int Seq { get; init; }
-
-        /// <summary>
-        /// 日志窗口 ID。
-        /// </summary>
         public required string WindowId { get; init; }
-
-        /// <summary>
-        /// 日志文本内容。
-        /// </summary>
         public required string Text { get; init; }
-
-        /// <summary>
-        /// 是否持久化为重要日志。
-        /// </summary>
         public bool IsPersistent { get; init; }
+    }
+
+    /// <summary>
+    /// 日志记录 DTO（用于序列化/反序列化）。
+    /// </summary>
+    public class LogItemDto
+    {
+        public int Seq { get; set; }
+        public string WindowId { get; set; } = "";
+        public string Text { get; set; } = "";
+        public bool IsPersistent { get; set; }
     }
 }

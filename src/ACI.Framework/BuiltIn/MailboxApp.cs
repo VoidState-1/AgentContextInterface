@@ -17,6 +17,7 @@ public class MailboxApp : ContextApp
     /// 通信频道名称。所有 MailboxApp 实例共享此频道。
     /// </summary>
     private const string MailChannel = "agent.mail";
+    private const string InboxStateKey = "mailbox_inbox";
 
     private readonly List<AgentMessage> _inbox = [];
     private IDisposable? _subscription;
@@ -33,6 +34,27 @@ public class MailboxApp : ContextApp
     {
         _subscription?.Dispose();
         _subscription = null;
+    }
+
+    /// <summary>
+    /// 将 _inbox 刷入 IAppState，供持久化使用。
+    /// </summary>
+    public override void OnSaveState()
+    {
+        State.Set(InboxStateKey, _inbox.ToList());
+    }
+
+    /// <summary>
+    /// 从 IAppState 中恢复 _inbox。
+    /// </summary>
+    public override void OnRestoreState()
+    {
+        _inbox.Clear();
+        var saved = State.Get<List<AgentMessage>>(InboxStateKey);
+        if (saved != null)
+        {
+            _inbox.AddRange(saved);
+        }
     }
 
     public override ContextWindow CreateWindow(string? intent)

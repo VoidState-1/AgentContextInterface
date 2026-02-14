@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ACI.Framework.Runtime;
 
 /// <summary>
@@ -24,4 +26,15 @@ public interface IAppState
     /// 清除所有状态
     /// </summary>
     void Clear();
+
+    /// <summary>
+    /// 导出所有状态为可序列化的字典（用于持久化）。
+    /// </summary>
+    IReadOnlyDictionary<string, JsonElement> Export();
+
+    /// <summary>
+    /// 从可序列化字典导入状态（用于恢复）。
+    /// 调用后覆盖现有数据。
+    /// </summary>
+    void Import(IReadOnlyDictionary<string, JsonElement> data);
 }
