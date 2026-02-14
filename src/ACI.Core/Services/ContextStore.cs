@@ -171,6 +171,40 @@ public class ContextStore
     }
 
     /// <summary>
+    /// 导出所有条目（包含 active 和 archive），用于快照。
+    /// </summary>
+    internal IReadOnlyList<ContextItem> ExportItems()
+    {
+        lock (_lock)
+        {
+            // 返回 archive（它包含所有历史条目）
+            return _archiveItems.ToList();
+        }
+    }
+
+    /// <summary>
+    /// 批量导入历史条目（恢复快照时使用）。
+    /// 调用后覆盖现有数据。
+    /// 注意：不通过 Add 方法注入，直接设置已有的 Seq/IsObsolete 等元数据。
+    /// </summary>
+    internal void ImportItems(IReadOnlyList<ContextItem> items)
+    {
+        lock (_lock)
+        {
+            _activeItems.Clear();
+            _archiveItems.Clear();
+            _archiveById.Clear();
+
+            foreach (var item in items)
+            {
+                _activeItems.Add(item);
+                _archiveItems.Add(item);
+                _archiveById[item.Id] = item;
+            }
+        }
+    }
+
+    /// <summary>
     /// 估算文本对应的 Token 数。
     /// </summary>
     private static int EstimateTokens(string content)

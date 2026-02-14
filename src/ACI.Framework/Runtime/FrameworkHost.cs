@@ -211,6 +211,97 @@ public class FrameworkHost
         app.OnCreate();
         _startedApps.Add(appName);
     }
+
+    // ========== 快照支持 ==========
+
+    /// <summary>
+    /// 采集所有已注册应用的快照。
+    /// 遍历 _apps，对每个已启动的 App 调用 OnSaveState → Export，
+    /// 收集 managed window IDs 和 intent 映射。
+    /// </summary>
+    internal List<AppSnapshot> TakeAppSnapshots()
+    {
+        var snapshots = new List<AppSnapshot>();
+
+        foreach (var (appName, app) in _apps)
+        {
+            var isStarted = _startedApps.Contains(appName);
+
+            if (isStarted)
+            {
+                app.OnSaveState();
+            }
+
+            var snapshot = new AppSnapshot
+            {
+                Name = appName,
+                IsStarted = isStarted,
+                ManagedWindowIds = isStarted
+                    ? app.GetManagedWindowIdsInternal().ToList()
+                    : [],
+                WindowIntents = [],
+                StateData = isStarted
+                    ? new Dictionary<string, System.Text.Json.JsonElement>(_appStates[appName].Export())
+                    : []
+            };
+
+            // 收集 intent 映射
+            foreach (var windowId in snapshot.ManagedWindowIds)
+            {
+                if (_windowIntents.TryGetValue(windowId, out var intent))
+                {
+                    snapshot.WindowIntents[windowId] = intent;
+                }
+            }
+
+            snapshots.Add(snapshot);
+        }
+
+        return snapshots;
+    }
+
+    /// <summary>
+    /// 从快照恢复所有应用状态。
+    /// 仅恢复已注册的 App（快照里有但当前未注册的 App 会被跳过）。
+    /// </summary>
+    internal void RestoreAppSnapshots(IReadOnlyList<AppSnapshot> appSnapshots)
+    {
+        foreach (var snapshot in appSnapshots)
+        {
+            if (!_apps.TryGetValue(snapshot.Name, out var app)) continue;
+
+            // 确保 AppState 存在
+            if (!_appStates.ContainsKey(snapshot.Name))
+            {
+                _appStates[snapshot.Name] = new InMemoryAppState();
+            }
+
+            // 导入状态数据
+            _appStates[snapshot.Name].Import(snapshot.StateData);
+
+            if (!snapshot.IsStarted) continue;
+
+            // 重新启动生命周期
+            if (!_startedApps.Contains(snapshot.Name))
+            {
+                app.Initialize(_appStates[snapshot.Name], _context);
+                _startedApps.Add(snapshot.Name);
+            }
+
+            // 恢复 managed window ID 列表
+            app.RestoreManagedWindowIds(snapshot.ManagedWindowIds);
+
+            // 恢复 intent 映射
+            foreach (var (windowId, intent) in snapshot.WindowIntents)
+            {
+                _windowToApp[windowId] = snapshot.Name;
+                _windowIntents[windowId] = intent;
+            }
+
+            // 调用应用的恢复回调（重建内部状态，可能创建窗口）
+            app.OnRestoreState();
+        }
+    }
 }
 
 /// <summary>

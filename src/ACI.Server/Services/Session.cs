@@ -2,6 +2,7 @@ using System.Diagnostics;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
+using ACI.Server.Persistence;
 using ACI.Server.Settings;
 
 namespace ACI.Server.Services;
@@ -214,6 +215,45 @@ public class Session : IDisposable
             {
                 Trace.TraceWarning(
                     $"Session '{SessionId}' wakeup queue depth exceeded {MaxWakeupLoopDepth}. Remaining wakeups: {_wakeupQueue.Count}.");
+            }
+        }
+    }
+
+    // ========== 快照支持 ==========
+
+    /// <summary>
+    /// 采集会话快照（包含所有 Agent）。
+    /// </summary>
+    public Persistence.SessionSnapshot TakeSnapshot()
+    {
+        var snapshot = new Persistence.SessionSnapshot
+        {
+            SessionId = SessionId,
+            CreatedAt = CreatedAt,
+            SnapshotAt = DateTime.UtcNow,
+            Version = 1,
+            Agents = []
+        };
+
+        foreach (var agent in _agents.Values)
+        {
+            snapshot.Agents.Add(agent.TakeSnapshot());
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// 从快照恢复会话状态。
+    /// 仅恢复已存在的 Agent（快照中存在但当前 Session 中没有的会跳过）。
+    /// </summary>
+    public void RestoreFromSnapshot(Persistence.SessionSnapshot snapshot)
+    {
+        foreach (var agentSnapshot in snapshot.Agents)
+        {
+            if (_agents.TryGetValue(agentSnapshot.Profile.Id, out var agent))
+            {
+                agent.RestoreFromSnapshot(agentSnapshot);
             }
         }
     }

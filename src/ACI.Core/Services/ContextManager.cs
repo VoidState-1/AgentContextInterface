@@ -14,6 +14,11 @@ public class ContextManager : IContextManager
     private readonly ContextStore _store;
 
     /// <summary>
+    /// 暴露内部存储（供 ACI.Server 快照采集/恢复使用）。
+    /// </summary>
+    internal ContextStore Store => _store;
+
+    /// <summary>
     /// 上下文裁剪服务。
     /// </summary>
     private readonly ContextPruner _pruner;

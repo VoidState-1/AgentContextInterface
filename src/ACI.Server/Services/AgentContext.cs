@@ -5,6 +5,7 @@ using ACI.Framework.BuiltIn;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
+using ACI.Server.Persistence;
 using ACI.Server.Settings;
 using System.Threading;
 
@@ -231,6 +232,64 @@ public class AgentContext : IDisposable
                 Content = evt.WindowId
             });
         }
+    }
+
+    // ========== 快照支持 ==========
+
+    /// <summary>
+    /// 采集当前 Agent 快照。
+    /// 包含：Profile、Clock 序号、上下文时间线、应用快照。
+    /// </summary>
+    public Persistence.AgentSnapshot TakeSnapshot()
+    {
+        var snapshot = new Persistence.AgentSnapshot
+        {
+            Profile = Persistence.AgentProfileSnapshot.From(Profile),
+            ClockSeq = Clock is SeqClock sc ? sc.CurrentSeq : 0,
+            ContextItems = [],
+            Apps = Host.TakeAppSnapshots()
+        };
+
+        // 导出上下文时间线
+        if (Context is ContextManager cm)
+        {
+            var store = cm.Store;
+            if (store is ContextStore cs)
+            {
+                foreach (var item in cs.ExportItems())
+                {
+                    snapshot.ContextItems.Add(Persistence.ContextItemSnapshot.From(item));
+                }
+            }
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// 从快照恢复 Agent 状态。
+    /// 恢复顺序：Clock → ContextStore → FrameworkHost Apps。
+    /// 注意：需要在 Agent 初始化之后、首次交互之前调用。
+    /// </summary>
+    public void RestoreFromSnapshot(Persistence.AgentSnapshot snapshot)
+    {
+        // 1. 恢复时钟
+        if (Clock is SeqClock sc)
+        {
+            sc.Reset(snapshot.ClockSeq);
+        }
+
+        // 2. 恢复上下文时间线
+        if (Context is ContextManager cm && cm.Store is ContextStore cs)
+        {
+            var items = snapshot.ContextItems
+                .Select(s => s.ToContextItem())
+                .ToList();
+            cs.ImportItems(items);
+        }
+
+        // 3. 恢复应用状态
+        Host.RestoreAppSnapshots(snapshot.Apps);
     }
 
     /// <summary>
