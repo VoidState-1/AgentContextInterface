@@ -1,9 +1,8 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using ACI.Core.Models;
 using ACI.Framework.Runtime;
 
-namespace ACI.Server.Persistence;
+namespace ACI.Storage;
 
 /// <summary>
 /// 会话完整快照（顶层序列化单元）。
@@ -131,7 +130,7 @@ public class ContextItemSnapshot
             Type = Type,
             Content = Content
         };
-        // These setters are internal but accessible via InternalsVisibleTo
+        // Seq is internal set, accessible via InternalsVisibleTo
         item.Seq = Seq;
         item.IsObsolete = IsObsolete;
         item.EstimatedTokens = EstimatedTokens;

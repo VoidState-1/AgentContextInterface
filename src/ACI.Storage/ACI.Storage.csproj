@@ -7,9 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="ACI.Server" />
-    <InternalsVisibleTo Include="ACI.Storage" />
-    <InternalsVisibleTo Include="ACI.Core.Tests" />
+    <ProjectReference Include="..\ACI.Core\ACI.Core.csproj" />
+    <ProjectReference Include="..\ACI.Framework\ACI.Framework.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="ACI.Storage.Tests" />
   </ItemGroup>
 

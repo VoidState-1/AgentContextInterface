@@ -11,6 +11,7 @@
     <ProjectReference Include="..\ACI.Core\ACI.Core.csproj" />
     <ProjectReference Include="..\ACI.LLM\ACI.LLM.csproj" />
     <ProjectReference Include="..\ACI.Framework\ACI.Framework.csproj" />
+    <ProjectReference Include="..\ACI.Storage\ACI.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>

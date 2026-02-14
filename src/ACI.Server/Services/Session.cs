@@ -2,7 +2,7 @@ using System.Diagnostics;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
-using ACI.Server.Persistence;
+using ACI.Storage;
 using ACI.Server.Settings;
 
 namespace ACI.Server.Services;
@@ -224,9 +224,9 @@ public class Session : IDisposable
     /// <summary>
     /// 采集会话快照（包含所有 Agent）。
     /// </summary>
-    public Persistence.SessionSnapshot TakeSnapshot()
+    public SessionSnapshot TakeSnapshot()
     {
-        var snapshot = new Persistence.SessionSnapshot
+        var snapshot = new SessionSnapshot
         {
             SessionId = SessionId,
             CreatedAt = CreatedAt,
@@ -247,7 +247,7 @@ public class Session : IDisposable
     /// 从快照恢复会话状态。
     /// 仅恢复已存在的 Agent（快照中存在但当前 Session 中没有的会跳过）。
     /// </summary>
-    public void RestoreFromSnapshot(Persistence.SessionSnapshot snapshot)
+    public void RestoreFromSnapshot(SessionSnapshot snapshot)
     {
         foreach (var agentSnapshot in snapshot.Agents)
         {

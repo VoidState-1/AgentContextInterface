@@ -5,7 +5,7 @@ using ACI.Framework.BuiltIn;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
-using ACI.Server.Persistence;
+using ACI.Storage;
 using ACI.Server.Settings;
 using System.Threading;
 
@@ -240,11 +240,11 @@ public class AgentContext : IDisposable
     /// 采集当前 Agent 快照。
     /// 包含：Profile、Clock 序号、上下文时间线、应用快照。
     /// </summary>
-    public Persistence.AgentSnapshot TakeSnapshot()
+    public AgentSnapshot TakeSnapshot()
     {
-        var snapshot = new Persistence.AgentSnapshot
+        var snapshot = new AgentSnapshot
         {
-            Profile = Persistence.AgentProfileSnapshot.From(Profile),
+            Profile = AgentProfileSnapshot.From(Profile),
             ClockSeq = Clock is SeqClock sc ? sc.CurrentSeq : 0,
             ContextItems = [],
             Apps = Host.TakeAppSnapshots()
@@ -258,7 +258,7 @@ public class AgentContext : IDisposable
             {
                 foreach (var item in cs.ExportItems())
                 {
-                    snapshot.ContextItems.Add(Persistence.ContextItemSnapshot.From(item));
+                    snapshot.ContextItems.Add(ContextItemSnapshot.From(item));
                 }
             }
         }
@@ -271,7 +271,7 @@ public class AgentContext : IDisposable
     /// 恢复顺序：Clock → ContextStore → FrameworkHost Apps。
     /// 注意：需要在 Agent 初始化之后、首次交互之前调用。
     /// </summary>
-    public void RestoreFromSnapshot(Persistence.AgentSnapshot snapshot)
+    public void RestoreFromSnapshot(AgentSnapshot snapshot)
     {
         // 1. 恢复时钟
         if (Clock is SeqClock sc)
