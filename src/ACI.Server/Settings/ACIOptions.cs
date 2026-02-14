@@ -19,6 +19,11 @@ public class ACIOptions
     /// 上下文存储配置
     /// </summary>
     public ContextStorageOptions Context { get; set; } = new();
+
+    /// <summary>
+    /// 会话持久化配置。
+    /// </summary>
+    public PersistenceOptions Persistence { get; set; } = new();
 }
 
 public class ContextRenderOptions
@@ -45,4 +50,30 @@ public class ContextStorageOptions
     /// 对话项最大保留数量（仅 User/Assistant）
     /// </summary>
     public int MaxItems { get; set; } = 100;
+}
+
+public class PersistenceOptions
+{
+    /// <summary>
+    /// 会话快照存储目录。
+    /// </summary>
+    public string SessionStorePath { get; set; } = "data/sessions";
+
+    /// <summary>
+    /// 自动保存配置。
+    /// </summary>
+    public AutoSaveOptions AutoSave { get; set; } = new();
+}
+
+public class AutoSaveOptions
+{
+    /// <summary>
+    /// 是否启用自动保存。
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 防抖时间（毫秒），窗口内的重复请求会被合并为一次保存。
+    /// </summary>
+    public int DebounceMilliseconds { get; set; } = 1500;
 }

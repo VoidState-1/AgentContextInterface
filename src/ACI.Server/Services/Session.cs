@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json;
+using ACI.Core.Models;
 using ACI.Framework.Runtime;
 using ACI.LLM;
 using ACI.LLM.Abstractions;
@@ -12,6 +14,11 @@ namespace ACI.Server.Services;
 /// </summary>
 public class Session : IDisposable
 {
+    /// <summary>
+    /// 会话快照版本号。
+    /// </summary>
+    public const int SnapshotVersion = 1;
+
     public string SessionId { get; }
     public DateTime CreatedAt { get; }
 
@@ -21,6 +28,7 @@ public class Session : IDisposable
     private readonly HashSet<string> _queuedAgentIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ChannelMessage>> _pendingMessagesByAgent =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Action<string>? _onStateMutated;
     private bool _disposed;
 
     /// <summary>
@@ -33,10 +41,13 @@ public class Session : IDisposable
         IReadOnlyList<AgentProfile> agentProfiles,
         ILLMBridge llmBridge,
         ACIOptions options,
-        Action<FrameworkHost>? configureApps = null)
+        Action<FrameworkHost>? configureApps = null,
+        Action<string>? onStateMutated = null,
+        DateTime? createdAt = null)
     {
         SessionId = sessionId;
-        CreatedAt = DateTime.UtcNow;
+        CreatedAt = createdAt ?? DateTime.UtcNow;
+        _onStateMutated = onStateMutated;
 
         var isMultiAgent = agentProfiles.Count > 1;
 
@@ -135,6 +146,7 @@ public class Session : IDisposable
             () => agent.Interaction.ProcessAsync(message, ct), ct);
 
         await ProcessWakeupQueueAsync(ct);
+        _onStateMutated?.Invoke(SessionId);
 
         return result;
     }
@@ -149,6 +161,27 @@ public class Session : IDisposable
             () => agent.Interaction.ProcessAssistantOutputAsync(assistantOutput, ct), ct);
 
         await ProcessWakeupQueueAsync(ct);
+        _onStateMutated?.Invoke(SessionId);
+
+        return result;
+    }
+
+    public async Task<ActionResult> ExecuteWindowActionAsync(
+        string agentId,
+        string windowId,
+        string actionId,
+        JsonElement? parameters = null,
+        CancellationToken ct = default)
+    {
+        var agent = GetAgent(agentId)
+            ?? throw new InvalidOperationException($"Agent '{agentId}' does not exist.");
+
+        var result = await agent.RunSerializedAsync(
+            () => agent.Interaction.ExecuteWindowActionAsync(windowId, actionId, parameters),
+            ct);
+
+        await ProcessWakeupQueueAsync(ct);
+        _onStateMutated?.Invoke(SessionId);
 
         return result;
     }
@@ -231,7 +264,7 @@ public class Session : IDisposable
             SessionId = SessionId,
             CreatedAt = CreatedAt,
             SnapshotAt = DateTime.UtcNow,
-            Version = 1,
+            Version = SnapshotVersion,
             Agents = []
         };
 
@@ -251,9 +284,19 @@ public class Session : IDisposable
     {
         foreach (var agentSnapshot in snapshot.Agents)
         {
-            if (_agents.TryGetValue(agentSnapshot.Profile.Id, out var agent))
+            if (!_agents.TryGetValue(agentSnapshot.Profile.Id, out var agent))
+            {
+                continue;
+            }
+
+            try
             {
                 agent.RestoreFromSnapshot(agentSnapshot);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning(
+                    $"Session '{SessionId}' restore skipped agent '{agentSnapshot.Profile.Id}': {ex.Message}");
             }
         }
     }

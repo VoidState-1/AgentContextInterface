@@ -4,6 +4,7 @@ using ACI.Server.Dto;
 using ACI.Server.Hubs;
 using ACI.Server.Services;
 using ACI.Server.Settings;
+using ACI.Storage;
 
 namespace ACI.Server.Tests.Services;
 
@@ -150,13 +151,235 @@ public class SessionManagerTests
         Assert.Contains("Invalid agent id", ex.Message);
     }
 
-    private static SessionManager CreateManager(out SpyHubNotifier notifier)
+    [Fact]
+    public async Task SaveSessionAsync_ExistingSession_ShouldPersistSnapshot()
+    {
+        var manager = CreateManager(out _, out var store);
+        var session = manager.CreateSession();
+
+        var saved = await manager.SaveSessionAsync(session.SessionId);
+        var exists = await store.ExistsAsync(session.SessionId);
+
+        Assert.True(saved);
+        Assert.True(exists);
+
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task SaveSessionAsync_MissingSession_ShouldReturnFalse()
+    {
+        var manager = CreateManager(out _, out _);
+
+        var saved = await manager.SaveSessionAsync("missing");
+
+        Assert.False(saved);
+    }
+
+    [Fact]
+    public async Task LoadSessionAsync_SavedSession_ShouldRestoreToActiveSessions()
+    {
+        var manager = CreateManager(out _, out var store);
+        var session = manager.CreateSession();
+        await manager.SaveSessionAsync(session.SessionId);
+        manager.CloseSession(session.SessionId);
+        Assert.Null(manager.GetSession(session.SessionId));
+
+        var loaded = await manager.LoadSessionAsync(session.SessionId);
+
+        Assert.NotNull(loaded);
+        Assert.NotNull(manager.GetSession(session.SessionId));
+        Assert.Equal(loaded!.SessionId, session.SessionId);
+        Assert.True(await store.ExistsAsync(session.SessionId));
+
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task ListAndDeleteSavedSessions_ShouldReflectStoreState()
+    {
+        var manager = CreateManager(out _, out _);
+        var session = manager.CreateSession();
+        await manager.SaveSessionAsync(session.SessionId);
+
+        var list = await manager.ListSavedSessionsAsync();
+        Assert.Contains(list, s => s.SessionId == session.SessionId);
+
+        var deleted = await manager.DeleteSavedSessionAsync(session.SessionId);
+        var listAfterDelete = await manager.ListSavedSessionsAsync();
+
+        Assert.True(deleted);
+        Assert.DoesNotContain(listAfterDelete, s => s.SessionId == session.SessionId);
+
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task RequestAutoSave_ExistingSession_ShouldPersistAfterDebounce()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = true,
+                        DebounceMilliseconds = 30
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        manager.RequestAutoSave(session.SessionId);
+        await WaitForAsync(() => store.GetSaveCount(session.SessionId) >= 1);
+
+        Assert.True(await store.ExistsAsync(session.SessionId));
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task RequestAutoSave_Debounce_ShouldCoalesceToSingleSave()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = true,
+                        DebounceMilliseconds = 80
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        manager.RequestAutoSave(session.SessionId);
+        await Task.Delay(20);
+        manager.RequestAutoSave(session.SessionId);
+        await Task.Delay(20);
+        manager.RequestAutoSave(session.SessionId);
+
+        await WaitForAsync(() => store.GetSaveCount(session.SessionId) >= 1);
+        await Task.Delay(180);
+
+        Assert.Equal(1, store.GetSaveCount(session.SessionId));
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task LoadSessionAsync_UnsupportedSnapshotVersion_ShouldThrow()
+    {
+        var manager = CreateManager(out _, out var store);
+        var session = manager.CreateSession();
+        await manager.SaveSessionAsync(session.SessionId);
+        manager.CloseSession(session.SessionId);
+
+        var snapshot = await store.LoadAsync(session.SessionId);
+        Assert.NotNull(snapshot);
+        snapshot!.Version = Session.SnapshotVersion + 1;
+        await store.SaveAsync(snapshot);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.LoadSessionAsync(session.SessionId));
+    }
+
+    [Fact]
+    public async Task SimulateAsync_ShouldTriggerAutoSaveViaSessionMutationHook()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = true,
+                        DebounceMilliseconds = 20
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        var result = await session.SimulateAsync("default", "assistant simulated output");
+        Assert.True(result.Success);
+
+        await WaitForAsync(() => store.GetSaveCount(session.SessionId) >= 1);
+        manager.CloseSession(session.SessionId);
+    }
+
+    [Fact]
+    public async Task ExecuteWindowActionAsync_ShouldTriggerAutoSaveViaSessionMutationHook()
+    {
+        var manager = CreateManager(
+            out _,
+            out var store,
+            new ACIOptions
+            {
+                Render = new ContextRenderOptions
+                {
+                    MaxTokens = 4000,
+                    MinConversationTokens = 1000,
+                    PruneTargetTokens = 2000
+                },
+                Persistence = new PersistenceOptions
+                {
+                    AutoSave = new AutoSaveOptions
+                    {
+                        Enabled = true,
+                        DebounceMilliseconds = 20
+                    }
+                }
+            });
+        var session = manager.CreateSession();
+
+        var actionResult = await session.ExecuteWindowActionAsync(
+            "default",
+            "missing_window",
+            "any_action");
+        Assert.False(actionResult.Success);
+
+        await WaitForAsync(() => store.GetSaveCount(session.SessionId) >= 1);
+        manager.CloseSession(session.SessionId);
+    }
+
+    private static SessionManager CreateManager(
+        out SpyHubNotifier notifier,
+        out ISessionStore store,
+        ACIOptions? options = null)
     {
         notifier = new SpyHubNotifier();
+        store = new InMemorySessionStore();
         return new SessionManager(
             llmBridge: new FakeLlmBridge(),
             hubNotifier: notifier,
-            options: new ACIOptions
+            store: store,
+            options: options ?? new ACIOptions
             {
                 Render = new ContextRenderOptions
                 {
@@ -165,6 +388,11 @@ public class SessionManagerTests
                     PruneTargetTokens = 2000
                 }
             });
+    }
+
+    private static SessionManager CreateManager(out SpyHubNotifier notifier)
+    {
+        return CreateManager(out notifier, out _);
     }
 
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 2000)
@@ -213,6 +441,63 @@ public class SessionManagerTests
         {
             Closed.Add(new WindowNotification(agentId, windowId));
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemorySessionStore : ISessionStore
+    {
+        private readonly Dictionary<string, SessionSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _saveCounts = new(StringComparer.OrdinalIgnoreCase);
+
+        public Task SaveAsync(SessionSnapshot snapshot, CancellationToken ct = default)
+        {
+            _snapshots[snapshot.SessionId] = snapshot;
+            if (_saveCounts.TryGetValue(snapshot.SessionId, out var count))
+            {
+                _saveCounts[snapshot.SessionId] = count + 1;
+            }
+            else
+            {
+                _saveCounts[snapshot.SessionId] = 1;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task<SessionSnapshot?> LoadAsync(string sessionId, CancellationToken ct = default)
+        {
+            _snapshots.TryGetValue(sessionId, out var snapshot);
+            return Task.FromResult(snapshot);
+        }
+
+        public Task DeleteAsync(string sessionId, CancellationToken ct = default)
+        {
+            _snapshots.Remove(sessionId);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct = default)
+        {
+            var list = _snapshots.Values
+                .Select(snapshot => new SessionSummary
+                {
+                    SessionId = snapshot.SessionId,
+                    CreatedAt = snapshot.CreatedAt,
+                    SnapshotAt = snapshot.SnapshotAt,
+                    AgentCount = snapshot.Agents.Count
+                })
+                .OrderByDescending(s => s.SnapshotAt)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<SessionSummary>>(list);
+        }
+
+        public Task<bool> ExistsAsync(string sessionId, CancellationToken ct = default)
+        {
+            return Task.FromResult(_snapshots.ContainsKey(sessionId));
+        }
+
+        public int GetSaveCount(string sessionId)
+        {
+            return _saveCounts.GetValueOrDefault(sessionId);
         }
     }
 }

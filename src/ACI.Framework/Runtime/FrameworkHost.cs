@@ -268,38 +268,46 @@ public class FrameworkHost
     {
         foreach (var snapshot in appSnapshots)
         {
-            if (!_apps.TryGetValue(snapshot.Name, out var app)) continue;
-
-            // 确保 AppState 存在
-            if (!_appStates.ContainsKey(snapshot.Name))
+            try
             {
-                _appStates[snapshot.Name] = new InMemoryAppState();
+                if (!_apps.TryGetValue(snapshot.Name, out var app)) continue;
+
+                // 确保 AppState 存在
+                if (!_appStates.ContainsKey(snapshot.Name))
+                {
+                    _appStates[snapshot.Name] = new InMemoryAppState();
+                }
+
+                // 导入状态数据
+                _appStates[snapshot.Name].Import(snapshot.StateData);
+
+                if (!snapshot.IsStarted) continue;
+
+                // 重新启动生命周期
+                if (!_startedApps.Contains(snapshot.Name))
+                {
+                    app.Initialize(_appStates[snapshot.Name], _context);
+                    _startedApps.Add(snapshot.Name);
+                }
+
+                // 恢复 managed window ID 列表
+                app.RestoreManagedWindowIds(snapshot.ManagedWindowIds);
+
+                // 恢复 intent 映射
+                foreach (var (windowId, intent) in snapshot.WindowIntents)
+                {
+                    _windowToApp[windowId] = snapshot.Name;
+                    _windowIntents[windowId] = intent;
+                }
+
+                // 调用应用的恢复回调（重建内部状态，可能创建窗口）
+                app.OnRestoreState();
             }
-
-            // 导入状态数据
-            _appStates[snapshot.Name].Import(snapshot.StateData);
-
-            if (!snapshot.IsStarted) continue;
-
-            // 重新启动生命周期
-            if (!_startedApps.Contains(snapshot.Name))
+            catch (Exception ex)
             {
-                app.Initialize(_appStates[snapshot.Name], _context);
-                _startedApps.Add(snapshot.Name);
+                System.Diagnostics.Trace.TraceWarning(
+                    $"App '{snapshot.Name}' restore failed and was skipped: {ex.Message}");
             }
-
-            // 恢复 managed window ID 列表
-            app.RestoreManagedWindowIds(snapshot.ManagedWindowIds);
-
-            // 恢复 intent 映射
-            foreach (var (windowId, intent) in snapshot.WindowIntents)
-            {
-                _windowToApp[windowId] = snapshot.Name;
-                _windowIntents[windowId] = intent;
-            }
-
-            // 调用应用的恢复回调（重建内部状态，可能创建窗口）
-            app.OnRestoreState();
         }
     }
 }

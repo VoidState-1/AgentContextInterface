@@ -1,62 +1,40 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.RegularExpressions;
 using ACI.Core.Abstractions;
 using ACI.Framework.Runtime;
 using ACI.LLM.Abstractions;
 using ACI.Server.Dto;
 using ACI.Server.Hubs;
 using ACI.Server.Settings;
-using System.Text.RegularExpressions;
+using ACI.Storage;
 
 namespace ACI.Server.Services;
 
-/// <summary>
-/// 会话管理器接口（管理 Session 而非单个 Agent）
-/// </summary>
 public interface ISessionManager
 {
-    /// <summary>
-    /// 创建新会话（支持多 Agent）
-    /// </summary>
     Session CreateSession(CreateSessionRequest? request = null);
-
-    /// <summary>
-    /// 获取会话
-    /// </summary>
     Session? GetSession(string sessionId);
-
-    /// <summary>
-    /// 关闭会话
-    /// </summary>
     void CloseSession(string sessionId);
-
-    /// <summary>
-    /// 获取所有活动会话 ID
-    /// </summary>
     IEnumerable<string> GetActiveSessions();
 
-    /// <summary>
-    /// 会话变更事件
-    /// </summary>
+    Task<bool> SaveSessionAsync(string sessionId, CancellationToken ct = default);
+    Task<Session?> LoadSessionAsync(string sessionId, CancellationToken ct = default);
+    Task<IReadOnlyList<SessionSummary>> ListSavedSessionsAsync(CancellationToken ct = default);
+    Task<bool> DeleteSavedSessionAsync(string sessionId, CancellationToken ct = default);
+    void RequestAutoSave(string sessionId);
+
     event Action<SessionChangeEvent>? OnSessionChange;
 }
 
-/// <summary>
-/// 会话变更事件
-/// </summary>
 public record SessionChangeEvent(string SessionId, SessionChangeType Type);
 
-/// <summary>
-/// 会话变更类型
-/// </summary>
 public enum SessionChangeType
 {
     Created,
     Closed
 }
 
-/// <summary>
-/// 会话管理器实现（管理 Session）
-/// </summary>
 public class SessionManager : ISessionManager
 {
     private static readonly Regex AgentIdRegex = new(
@@ -65,8 +43,10 @@ public class SessionManager : ISessionManager
 
     private readonly ConcurrentDictionary<string, Session> _sessions = new();
     private readonly ConcurrentDictionary<string, List<(string AgentId, Action<WindowChangedEvent> Handler)>> _windowHandlers = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _autoSaveTokens = new();
     private readonly ILLMBridge _llmBridge;
     private readonly IACIHubNotifier _hubNotifier;
+    private readonly ISessionStore _store;
     private readonly ACIOptions _options;
     private readonly Action<FrameworkHost>? _configureApps;
 
@@ -75,11 +55,13 @@ public class SessionManager : ISessionManager
     public SessionManager(
         ILLMBridge llmBridge,
         IACIHubNotifier hubNotifier,
+        ISessionStore store,
         ACIOptions options,
         Action<FrameworkHost>? configureApps = null)
     {
         _llmBridge = llmBridge;
         _hubNotifier = hubNotifier;
+        _store = store;
         _options = options;
         _configureApps = configureApps;
     }
@@ -87,15 +69,17 @@ public class SessionManager : ISessionManager
     public Session CreateSession(CreateSessionRequest? request = null)
     {
         var sessionId = Guid.NewGuid().ToString("N");
-
-        // 解析 Agent 配置（为空则默认单 Agent）
         var profiles = ParseProfiles(request);
 
         var session = new Session(
-            sessionId, profiles, _llmBridge, _options, _configureApps);
+            sessionId,
+            profiles,
+            _llmBridge,
+            _options,
+            _configureApps,
+            RequestAutoSave);
         _sessions[sessionId] = session;
         BindWindowNotifications(session);
-
         OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Created));
 
         return session;
@@ -110,6 +94,7 @@ public class SessionManager : ISessionManager
     {
         if (_sessions.TryRemove(sessionId, out var session))
         {
+            CancelPendingAutoSave(sessionId);
             UnbindWindowNotifications(session);
             session.Dispose();
             OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Closed));
@@ -121,9 +106,97 @@ public class SessionManager : ISessionManager
         return _sessions.Keys;
     }
 
-    /// <summary>
-    /// 解析请求中的 Agent 配置。
-    /// </summary>
+    public async Task<bool> SaveSessionAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+        {
+            return false;
+        }
+
+        await _store.SaveAsync(session.TakeSnapshot(), ct);
+        return true;
+    }
+
+    public async Task<Session?> LoadSessionAsync(string sessionId, CancellationToken ct = default)
+    {
+        var snapshot = await _store.LoadAsync(sessionId, ct);
+        if (snapshot == null)
+        {
+            return null;
+        }
+
+        if (snapshot.Version != Session.SnapshotVersion)
+        {
+            throw new InvalidOperationException(
+                $"Unsupported snapshot version '{snapshot.Version}'. Current version is '{Session.SnapshotVersion}'.");
+        }
+
+        var profiles = snapshot.Agents.Select(a => a.Profile.ToProfile()).ToList();
+        ValidateProfiles(profiles);
+
+        if (_sessions.TryRemove(sessionId, out var existing))
+        {
+            CancelPendingAutoSave(sessionId);
+            UnbindWindowNotifications(existing);
+            existing.Dispose();
+            OnSessionChange?.Invoke(new SessionChangeEvent(sessionId, SessionChangeType.Closed));
+        }
+
+        var restored = new Session(
+            snapshot.SessionId,
+            profiles,
+            _llmBridge,
+            _options,
+            _configureApps,
+            RequestAutoSave,
+            snapshot.CreatedAt);
+        restored.RestoreFromSnapshot(snapshot);
+
+        _sessions[restored.SessionId] = restored;
+        BindWindowNotifications(restored);
+        OnSessionChange?.Invoke(new SessionChangeEvent(restored.SessionId, SessionChangeType.Created));
+        return restored;
+    }
+
+    public Task<IReadOnlyList<SessionSummary>> ListSavedSessionsAsync(CancellationToken ct = default)
+    {
+        return _store.ListAsync(ct);
+    }
+
+    public async Task<bool> DeleteSavedSessionAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (!await _store.ExistsAsync(sessionId, ct))
+        {
+            return false;
+        }
+
+        await _store.DeleteAsync(sessionId, ct);
+        return true;
+    }
+
+    public void RequestAutoSave(string sessionId)
+    {
+        if (!_options.Persistence.AutoSave.Enabled || !_sessions.ContainsKey(sessionId))
+        {
+            return;
+        }
+
+        var delayMs = Math.Max(0, _options.Persistence.AutoSave.DebounceMilliseconds);
+        var nextCts = new CancellationTokenSource();
+
+        _autoSaveTokens.AddOrUpdate(
+            sessionId,
+            nextCts,
+            (_, previous) =>
+            {
+                try { previous.Cancel(); } catch { /* ignore */ }
+                previous.Dispose();
+                return nextCts;
+            });
+
+        _ = ScheduleAutoSaveAsync(sessionId, delayMs, nextCts);
+    }
+
     private static IReadOnlyList<AgentProfile> ParseProfiles(CreateSessionRequest? request)
     {
         if (request?.Agents == null || request.Agents.Count == 0)
@@ -136,9 +209,6 @@ public class SessionManager : ISessionManager
         return profiles;
     }
 
-    /// <summary>
-    /// Validate profile list before building a session.
-    /// </summary>
     private static void ValidateProfiles(IReadOnlyList<AgentProfile> profiles)
     {
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -168,9 +238,6 @@ public class SessionManager : ISessionManager
         }
     }
 
-    /// <summary>
-    /// 为 Session 中每个 Agent 绑定窗口通知。
-    /// </summary>
     private void BindWindowNotifications(Session session)
     {
         var handlers = new List<(string AgentId, Action<WindowChangedEvent> Handler)>();
@@ -186,12 +253,12 @@ public class SessionManager : ISessionManager
         _windowHandlers[session.SessionId] = handlers;
     }
 
-    /// <summary>
-    /// 解绑窗口通知。
-    /// </summary>
     private void UnbindWindowNotifications(Session session)
     {
-        if (!_windowHandlers.TryRemove(session.SessionId, out var handlers)) return;
+        if (!_windowHandlers.TryRemove(session.SessionId, out var handlers))
+        {
+            return;
+        }
 
         foreach (var (agentId, handler) in handlers)
         {
@@ -227,7 +294,52 @@ public class SessionManager : ISessionManager
         }
         catch
         {
-            // 保持会话逻辑健壮，忽略通知失败
+            // Keep session logic stable even when hub notifications fail.
         }
+    }
+
+    private async Task ScheduleAutoSaveAsync(
+        string sessionId,
+        int delayMs,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs, cts.Token);
+            }
+
+            await SaveSessionAsync(sessionId, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 旧请求被新请求覆盖，属于正常防抖行为。
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning(
+                $"Auto save failed for session '{sessionId}': {ex.Message}");
+        }
+        finally
+        {
+            if (_autoSaveTokens.TryGetValue(sessionId, out var current) && ReferenceEquals(current, cts))
+            {
+                _autoSaveTokens.TryRemove(sessionId, out _);
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    private void CancelPendingAutoSave(string sessionId)
+    {
+        if (!_autoSaveTokens.TryRemove(sessionId, out var cts))
+        {
+            return;
+        }
+
+        try { cts.Cancel(); } catch { /* ignore */ }
+        cts.Dispose();
     }
 }

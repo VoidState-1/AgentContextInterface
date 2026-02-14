@@ -5,6 +5,7 @@ using ACI.Server.Endpoints;
 using ACI.Server.Hubs;
 using ACI.Server.Services;
 using ACI.Server.Settings;
+using ACI.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,12 +51,23 @@ builder.Services.AddHttpClient<ILLMBridge, OpenRouterClient>((sp, client) =>
 });
 
 // 会话管理器（单例）
+builder.Services.AddSingleton<ISessionStore>(sp =>
+{
+    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ACIOptions>>().Value;
+    var configuredPath = options.Persistence.SessionStorePath;
+    var basePath = Path.IsPathRooted(configuredPath)
+        ? configuredPath
+        : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, configuredPath));
+    return new FileSessionStore(basePath);
+});
+
 builder.Services.AddSingleton<ISessionManager>(sp =>
 {
     var llmBridge = sp.GetRequiredService<ILLMBridge>();
     var hubNotifier = sp.GetRequiredService<IACIHubNotifier>();
+    var store = sp.GetRequiredService<ISessionStore>();
     var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ACIOptions>>().Value;
-    return new SessionManager(llmBridge, hubNotifier, options);
+    return new SessionManager(llmBridge, hubNotifier, store, options);
 });
 
 // Hub 通知器
@@ -80,6 +92,7 @@ app.UseCors();
 // ========== 映射端点 ==========
 
 app.MapSessionEndpoints();
+app.MapPersistenceEndpoints();
 app.MapInteractionEndpoints();
 app.MapWindowEndpoints();
 

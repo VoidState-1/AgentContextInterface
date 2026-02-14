@@ -86,14 +86,22 @@ public static class WindowEndpoints
             ISessionManager sessionManager,
             CancellationToken ct) =>
         {
-            var agent = ResolveAgent(sessionManager, sessionId, agentId);
-            if (agent == null)
+            var session = sessionManager.GetSession(sessionId);
+            if (session == null)
+            {
+                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+            }
+
+            if (session.GetAgent(agentId) == null)
             {
                 return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
             }
 
-            var result = await agent.RunSerializedAsync(
-                () => agent.Interaction.ExecuteWindowActionAsync(windowId, actionId, request?.Params),
+            var result = await session.ExecuteWindowActionAsync(
+                agentId,
+                windowId,
+                actionId,
+                request?.Params,
                 ct);
 
             return Results.Ok(new
