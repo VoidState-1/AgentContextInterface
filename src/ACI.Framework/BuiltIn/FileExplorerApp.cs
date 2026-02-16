@@ -21,6 +21,48 @@ public sealed class FileExplorerApp : ContextApp
 
     public override void OnCreate()
     {
+        RegisterToolNamespace(Name,
+        [
+            new ToolDescriptor
+            {
+                Id = "open_index",
+                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["index"] = "integer"
+                },
+                Description = "Open a directory entry by index."
+            },
+            new ToolDescriptor
+            {
+                Id = "open_path",
+                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["path"] = "string"
+                },
+                Description = "Open a directory by absolute path."
+            },
+            new ToolDescriptor
+            {
+                Id = "up",
+                Description = "Go to parent directory."
+            },
+            new ToolDescriptor
+            {
+                Id = "home",
+                Description = "Go to current user home directory."
+            },
+            new ToolDescriptor
+            {
+                Id = "drives",
+                Description = "Switch to drive list."
+            },
+            new ToolDescriptor
+            {
+                Id = "refresh",
+                Description = "Refresh current listing."
+            }
+        ]);
+
         if (!State.Has(CurrentPathKey))
         {
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -61,8 +103,9 @@ public sealed class FileExplorerApp : ContextApp
         {
             Id = WindowId,
             Description = new Text(
-                "File explorer. Actions: open_index(index), open_path(path), up, home, drives, refresh, close."),
+                "File explorer. Tools: file_explorer.open_index(index), file_explorer.open_path(path), file_explorer.up, file_explorer.home, file_explorer.drives, file_explorer.refresh."),
             Content = new VStack { Children = lines },
+            NamespaceRefs = ["file_explorer", "system"],
             Actions =
             [
                 new ContextAction
@@ -113,13 +156,6 @@ public sealed class FileExplorerApp : ContextApp
                     Id = "refresh",
                     Label = "Refresh",
                     Handler = _ => Task.FromResult(ActionResult.Ok(summary: "Refresh explorer", shouldRefresh: true))
-                },
-
-                new ContextAction
-                {
-                    Id = "close",
-                    Label = "Close",
-                    Handler = _ => Task.FromResult(ActionResult.Close("Close file explorer"))
                 }
             ]
         };

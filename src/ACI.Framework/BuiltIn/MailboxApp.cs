@@ -27,6 +27,25 @@ public class MailboxApp : ContextApp
 
     public override void OnCreate()
     {
+        RegisterToolNamespace(Name,
+        [
+            new ToolDescriptor
+            {
+                Id = "send",
+                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["to"] = "string",
+                    ["content"] = "string"
+                },
+                Description = "Send a message to another agent."
+            },
+            new ToolDescriptor
+            {
+                Id = "mark_read",
+                Description = "Mark all mailbox messages as read."
+            }
+        ]);
+
         _subscription = Context.MessageChannel.Subscribe(MailChannel, OnMailReceived);
     }
 
@@ -67,9 +86,10 @@ public class MailboxApp : ContextApp
             Id = windowId,
             Description = new Text($"""
                 Your communication mailbox. You are agent "{Context.Profile.Id}" ({Context.Profile.Name}).
-                Use "send" to message another agent. Messages are delivered instantly.
+                Use mailbox.send / mailbox.mark_read tools to operate this window.
                 """),
             Content = RenderInbox(),
+            NamespaceRefs = ["mailbox", "system"],
             Options = new WindowOptions { Important = true },
             Actions =
             [

@@ -93,7 +93,7 @@ public class ActionExecutor : IToolExecutor
             var context = new ActionContext
             {
                 Window = window,
-                ActionId = effectiveActionId,
+                ActionId = actionId,
                 Parameters = parameters
             };
 

@@ -37,7 +37,7 @@ public static class PromptBuilder
         ## Launcher Rules
 
         - `launcher` window is always present.
-        - Use launcher actions (for example `open`) to open applications.
+        - Use launcher tools (for example `launcher.open`) to open applications.
         - `launcher` cannot be closed.
 
         ## General Rules

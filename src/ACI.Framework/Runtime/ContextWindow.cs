@@ -82,15 +82,45 @@ internal sealed class ContextActionHandler : IActionHandler
     {
         if (!_actions.TryGetValue(context.ActionId, out var action))
         {
-            return ActionResult.Fail($"Action '{context.ActionId}' not found");
+            var normalizedActionId = NormalizeActionId(context.ActionId);
+            if (!_actions.TryGetValue(normalizedActionId, out action))
+            {
+                return ActionResult.Fail($"Action '{context.ActionId}' not found");
+            }
         }
 
-        var validationError = ActionParamValidator.Validate(action.Params, context.Parameters);
+        var normalizedContext = new ActionContext
+        {
+            Window = context.Window,
+            ActionId = action.Id,
+            Parameters = context.Parameters
+        };
+
+        var validationError = ActionParamValidator.Validate(action.Params, normalizedContext.Parameters);
         if (validationError != null)
         {
             return ActionResult.Fail(validationError);
         }
 
-        return await action.Handler(context);
+        return await action.Handler(normalizedContext);
+    }
+
+    /// <summary>
+    /// 归一化动作 ID（支持 namespace.tool）。
+    /// </summary>
+    private static string NormalizeActionId(string actionId)
+    {
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return actionId;
+        }
+
+        var dotIndex = actionId.IndexOf('.');
+        if (dotIndex <= 0 || dotIndex >= actionId.Length - 1)
+        {
+            return actionId;
+        }
+
+        return actionId[(dotIndex + 1)..];
     }
 }

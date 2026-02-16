@@ -42,6 +42,15 @@ public class ActivityLog : ContextApp
     /// </summary>
     public override void OnCreate()
     {
+        RegisterToolNamespace(Name,
+        [
+            new ToolDescriptor
+            {
+                Id = "clear",
+                Description = "Clear generated activity log windows."
+            }
+        ]);
+
         if (_actionSub != null || _appSub != null || _taskSub != null)
         {
             return;
@@ -218,6 +227,7 @@ public class ActivityLog : ContextApp
                     new Text("Log entries are emitted as compact windows in context.")
                 ]
             },
+            NamespaceRefs = ["activity_log", "system"],
             Actions =
             [
                 new ContextAction
@@ -237,12 +247,6 @@ public class ActivityLog : ContextApp
                             message: "Logs cleared",
                             shouldRefresh: true));
                     }
-                },
-                new ContextAction
-                {
-                    Id = "close",
-                    Label = "Close",
-                    Handler = _ => Task.FromResult(ActionResult.Close())
                 }
             ]
         };

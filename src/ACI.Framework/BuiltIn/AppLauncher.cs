@@ -26,6 +26,25 @@ public class AppLauncher : ContextApp
 
     public override string? AppDescription => "Browse and launch installed applications.";
 
+    /// <summary>
+    /// 注册命名空间工具定义。
+    /// </summary>
+    public override void OnCreate()
+    {
+        RegisterToolNamespace("launcher",
+        [
+            new ToolDescriptor
+            {
+                Id = "open",
+                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["app"] = "string"
+                },
+                Description = "Open an application by name."
+            }
+        ]);
+    }
+
     public override ContextWindow CreateWindow(string? intent)
     {
         return new ContextWindow
@@ -36,6 +55,7 @@ public class AppLauncher : ContextApp
             {
                 Children = BuildAppList()
             },
+            NamespaceRefs = ["launcher"],
             Options = new WindowOptions
             {
                 // 启动器常驻且不可关闭，同时在 prompt 裁剪中固定保留。
