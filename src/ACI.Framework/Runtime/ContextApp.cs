@@ -1,3 +1,5 @@
+using ACI.Core.Models;
+
 namespace ACI.Framework.Runtime;
 
 /// <summary>
@@ -133,6 +135,26 @@ public abstract class ContextApp
     protected void RequestRefresh(string windowId)
     {
         Context.RequestRefresh(windowId);
+    }
+
+    /// <summary>
+    /// 注册或覆盖工具命名空间。
+    /// </summary>
+    protected void RegisterToolNamespace(ToolNamespaceDefinition definition)
+    {
+        Context.ToolNamespaces.Upsert(definition);
+    }
+
+    /// <summary>
+    /// 按命名空间和工具列表注册工具。
+    /// </summary>
+    protected void RegisterToolNamespace(string namespaceId, IEnumerable<ToolDescriptor> tools)
+    {
+        RegisterToolNamespace(new ToolNamespaceDefinition
+        {
+            Id = namespaceId,
+            Tools = tools.ToList()
+        });
     }
 
     /// <summary>

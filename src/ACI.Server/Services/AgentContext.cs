@@ -36,6 +36,7 @@ public class AgentContext : IDisposable
     public IEventBus Events { get; }
     public IWindowManager Windows { get; }
     public IContextManager Context { get; }
+    public IToolNamespaceRegistry ToolNamespaces { get; }
 
     /// <summary>
     /// Framework 层服务
@@ -92,11 +93,12 @@ public class AgentContext : IDisposable
         Events = new EventBus();
         Windows = new WindowManager(Clock);
         Context = new ContextManager(Clock);
+        ToolNamespaces = new ToolNamespaceRegistry();
         Windows.OnChanged += OnWindowChanged;
 
         // 4. 初始化 Framework 层（含 MessageChannel）
         LocalMessageChannel = new LocalMessageChannel(profile.Id);
-        Runtime = new RuntimeContext(Windows, Events, Clock, Context, profile, LocalMessageChannel);
+        Runtime = new RuntimeContext(Windows, Events, Clock, Context, ToolNamespaces, profile, LocalMessageChannel);
         _taskRunner = new SessionTaskRunner(Events, Clock);
         Runtime.ConfigureBackgroundTaskHandlers(
             (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),
@@ -108,6 +110,7 @@ public class AgentContext : IDisposable
         ActionExecutor = new ActionExecutor(Windows, Clock, Events, Host.RefreshWindow);
 
         // 6. 注册内置应用
+        RegisterSystemNamespace();
         RegisterBuiltInApps(registerMailbox);
         Host.Start("activity_log");
 
@@ -145,6 +148,29 @@ public class AgentContext : IDisposable
         {
             Host.Register(new MailboxApp());
         }
+    }
+
+    /// <summary>
+    /// 注册系统命名空间工具。
+    /// </summary>
+    private void RegisterSystemNamespace()
+    {
+        ToolNamespaces.Upsert(new ToolNamespaceDefinition
+        {
+            Id = "system",
+            Tools =
+            [
+                new ToolDescriptor
+                {
+                    Id = "close",
+                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["summary"] = "string?"
+                    },
+                    Description = "Close the target window."
+                }
+            ]
+        });
     }
 
     /// <summary>

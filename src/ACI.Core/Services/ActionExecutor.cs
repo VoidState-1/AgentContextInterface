@@ -7,7 +7,7 @@ namespace ACI.Core.Services;
 /// <summary>
 /// 执行窗口动作并发布执行事件。
 /// </summary>
-public class ActionExecutor
+public class ActionExecutor : IToolExecutor
 {
     /// <summary>
     /// 核心依赖。
