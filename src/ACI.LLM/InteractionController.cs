@@ -264,14 +264,15 @@ public class InteractionController
     /// </summary>
     private ActionExecutionMode ResolveActionMode(string windowId, string actionId)
     {
+        _ = windowId;
+
         if (string.Equals(actionId, "close", StringComparison.OrdinalIgnoreCase))
         {
             return ActionExecutionMode.Sync;
         }
 
-        var window = _windowManager.Get(windowId);
-        var action = window?.Actions.FirstOrDefault(a => string.Equals(a.Id, actionId, StringComparison.Ordinal));
-        return action?.Mode ?? ActionExecutionMode.Sync;
+        // 迁移期默认同步，后续由命名空间工具注册表提供精确模式。
+        return ActionExecutionMode.Sync;
     }
 
     /// <summary>

@@ -154,8 +154,8 @@ public class FrameworkHost
 
         window.Description = newDefinition.Description;
         window.Content = newDefinition.Content;
-        window.Actions.Clear();
-        window.Actions.AddRange(newDefinition.Actions.Select(a => a.ToActionDefinition()));
+        window.NamespaceRefs.Clear();
+        window.NamespaceRefs.AddRange(newDefinition.NamespaceRefs);
 
         // 保持 CreatedAt 不变，只更新 UpdatedAt
         window.Meta.CreatedAt = oldCreatedAt;

@@ -4,22 +4,24 @@ using System.Text.Json;
 namespace ACI.Server.Endpoints;
 
 /// <summary>
-/// 窗口相关端点（Agent 级）
+/// 窗口相关端点（Agent 级别）。
 /// </summary>
 public static class WindowEndpoints
 {
+    /// <summary>
+    /// 注册窗口 API。
+    /// </summary>
     public static void MapWindowEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/sessions/{sessionId}/agents/{agentId}/windows")
             .WithTags("Windows");
 
-        // 获取所有窗口
         group.MapGet("/", (string sessionId, string agentId, ISessionManager sessionManager) =>
         {
             var agent = ResolveAgent(sessionManager, sessionId, agentId);
             if (agent == null)
             {
-                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
             }
 
             var windows = agent.Windows.GetAll()
@@ -28,21 +30,15 @@ public static class WindowEndpoints
                     w.Id,
                     Description = w.Description?.Render(),
                     Content = w.Render(),
+                    Namespaces = w.NamespaceRefs,
                     w.AppName,
                     w.Meta.CreatedAt,
-                    w.Meta.UpdatedAt,
-                    Actions = w.Actions.Select(a => new
-                    {
-                        a.Id,
-                        a.Label,
-                        ParamSchema = a.ParamsSchema
-                    })
+                    w.Meta.UpdatedAt
                 });
 
             return Results.Ok(windows);
         });
 
-        // 获取单个窗口
         group.MapGet("/{windowId}", (
             string sessionId, string agentId, string windowId,
             ISessionManager sessionManager) =>
@@ -50,13 +46,13 @@ public static class WindowEndpoints
             var agent = ResolveAgent(sessionManager, sessionId, agentId);
             if (agent == null)
             {
-                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
             }
 
             var window = agent.Windows.Get(windowId);
             if (window == null)
             {
-                return Results.NotFound(new { Error = $"窗口不存在: {windowId}" });
+                return Results.NotFound(new { Error = $"Window not found: {windowId}" });
             }
 
             return Results.Ok(new
@@ -64,19 +60,13 @@ public static class WindowEndpoints
                 window.Id,
                 Description = window.Description?.Render(),
                 Content = window.Render(),
+                Namespaces = window.NamespaceRefs,
                 window.AppName,
                 window.Meta.CreatedAt,
-                window.Meta.UpdatedAt,
-                Actions = window.Actions.Select(a => new
-                {
-                    a.Id,
-                    a.Label,
-                    ParamSchema = a.ParamsSchema
-                })
+                window.Meta.UpdatedAt
             });
         });
 
-        // 执行操作
         group.MapPost("/{windowId}/actions/{actionId}", async (
             string sessionId,
             string agentId,
@@ -89,12 +79,12 @@ public static class WindowEndpoints
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
             {
-                return Results.NotFound(new { Error = $"会话不存在: {sessionId}" });
+                return Results.NotFound(new { Error = $"Session not found: {sessionId}" });
             }
 
             if (session.GetAgent(agentId) == null)
             {
-                return Results.NotFound(new { Error = $"Agent 不存在: {agentId}" });
+                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
             }
 
             var result = await session.ExecuteWindowActionAsync(
@@ -114,7 +104,7 @@ public static class WindowEndpoints
     }
 
     /// <summary>
-    /// 解析 Agent
+    /// 解析 Agent。
     /// </summary>
     private static AgentContext? ResolveAgent(
         ISessionManager sessionManager, string sessionId, string agentId)
@@ -125,9 +115,12 @@ public static class WindowEndpoints
 }
 
 /// <summary>
-/// 操作请求
+/// 动作请求。
 /// </summary>
 public class ActionRequest
 {
+    /// <summary>
+    /// 工具参数。
+    /// </summary>
     public JsonElement? Params { get; set; }
 }

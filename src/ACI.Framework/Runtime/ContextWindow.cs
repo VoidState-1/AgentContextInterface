@@ -1,41 +1,47 @@
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
+using ACI.Core.Services;
 using ACI.Framework.Components;
 
 namespace ACI.Framework.Runtime;
 
 /// <summary>
-/// 窗口定义（Framework 层）
+/// Framework 层窗口定义。
 /// </summary>
 public class ContextWindow
 {
     /// <summary>
-    /// 窗口 ID（应用内唯一）
+    /// 窗口 ID（应用内唯一）。
     /// </summary>
     public required string Id { get; init; }
 
     /// <summary>
-    /// 窗口描述（告诉 AI 这是什么、怎么操作）
+    /// 窗口描述。
     /// </summary>
     public IComponent? Description { get; init; }
 
     /// <summary>
-    /// 窗口主内容
+    /// 窗口内容。
     /// </summary>
     public required IComponent Content { get; init; }
 
     /// <summary>
-    /// 可用操作列表
+    /// 窗口引用的命名空间。
+    /// </summary>
+    public List<string> NamespaceRefs { get; init; } = [];
+
+    /// <summary>
+    /// 旧动作定义（迁移期保留，后续会迁移到命名空间体系）。
     /// </summary>
     public List<ContextAction> Actions { get; init; } = [];
 
     /// <summary>
-    /// 窗口配置
+    /// 窗口配置。
     /// </summary>
     public WindowOptions Options { get; init; } = new();
 
     /// <summary>
-    /// 转换为 Core 层的 Window
+    /// 转换为 Core 层 Window。
     /// </summary>
     public Window ToWindow()
     {
@@ -44,7 +50,7 @@ public class ContextWindow
             Id = Id,
             Description = Description,
             Content = Content,
-            Actions = Actions.Select(a => a.ToActionDefinition()).ToList(),
+            NamespaceRefs = NamespaceRefs.ToList(),
             Options = Options,
             Handler = new ContextActionHandler(Actions)
         };
@@ -52,23 +58,39 @@ public class ContextWindow
 }
 
 /// <summary>
-/// 操作处理器（内部类）
+/// 基于 ContextAction 的处理器。
 /// </summary>
-internal class ContextActionHandler : IActionHandler
+internal sealed class ContextActionHandler : IActionHandler
 {
+    /// <summary>
+    /// 动作映射表。
+    /// </summary>
     private readonly Dictionary<string, ContextAction> _actions;
 
+    /// <summary>
+    /// 构建处理器。
+    /// </summary>
     public ContextActionHandler(IEnumerable<ContextAction> actions)
     {
         _actions = actions.ToDictionary(a => a.Id);
     }
 
+    /// <summary>
+    /// 执行动作。
+    /// </summary>
     public async Task<ActionResult> ExecuteAsync(ActionContext context)
     {
-        if (_actions.TryGetValue(context.ActionId, out var action))
+        if (!_actions.TryGetValue(context.ActionId, out var action))
         {
-            return await action.Handler(context);
+            return ActionResult.Fail($"Action '{context.ActionId}' not found");
         }
-        return ActionResult.Fail($"操作 '{context.ActionId}' 未找到");
+
+        var validationError = ActionParamValidator.Validate(action.Params, context.Parameters);
+        if (validationError != null)
+        {
+            return ActionResult.Fail(validationError);
+        }
+
+        return await action.Handler(context);
     }
 }

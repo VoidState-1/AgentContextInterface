@@ -10,7 +10,7 @@ namespace ACI.Core.Services;
 public class ActionExecutor
 {
     /// <summary>
-    /// 核心依赖服务。
+    /// 核心依赖。
     /// </summary>
     private readonly IWindowManager _windows;
     private readonly ISeqClock _clock;
@@ -22,7 +22,7 @@ public class ActionExecutor
     private readonly Action<string>? _refreshWindow;
 
     /// <summary>
-    /// 创建动作执行器。
+    /// 创建执行器。
     /// </summary>
     public ActionExecutor(
         IWindowManager windows,
@@ -37,21 +37,21 @@ public class ActionExecutor
     }
 
     /// <summary>
-    /// 在指定窗口上执行一个动作。
+    /// 在指定窗口执行一个动作。
     /// </summary>
     public async Task<ActionResult> ExecuteAsync(
         string windowId,
         string actionId,
         JsonElement? parameters = null)
     {
-        // 1. 校验窗口与保留动作（close）逻辑。
+        // 1. 校验窗口存在。
         var window = _windows.Get(windowId);
         if (window == null)
         {
             return ActionResult.Fail($"Window '{windowId}' does not exist");
         }
 
-        // 系统保留动作：关闭窗口。
+        // 2. 处理系统保留动作 close。
         if (actionId == "close")
         {
             if (!window.Options.Closable)
@@ -78,24 +78,15 @@ public class ActionExecutor
             return closeResult;
         }
 
-        // 2. 查找动作定义并执行参数校验。
-        var actionDef = window.Actions.FirstOrDefault(a => a.Id == actionId);
-        if (actionDef == null)
-        {
-            return ActionResult.Fail($"Action '{actionId}' does not exist on window '{windowId}'");
-        }
-
-        var validationError = ActionParamValidator.Validate(actionDef.ParamsSchema, parameters);
-        if (validationError != null)
-        {
-            return ActionResult.Fail(validationError);
-        }
-
+        // 3. 通过窗口处理器执行业务动作。
         var seq2 = _clock.Next();
-
         ActionResult result;
-        // 3. 执行动作处理器并统一封装结果。
-        if (window.Handler != null)
+
+        if (window.Handler == null)
+        {
+            result = ActionResult.Fail($"Action '{actionId}' does not exist on window '{windowId}'");
+        }
+        else
         {
             var context = new ActionContext
             {
@@ -113,10 +104,6 @@ public class ActionExecutor
                 result = ActionResult.Fail($"Action execution failed: {ex.Message}");
             }
         }
-        else
-        {
-            result = ActionResult.Ok();
-        }
 
         result.LogSeq = seq2;
 
@@ -128,7 +115,7 @@ public class ActionExecutor
             Summary: result.Summary
         ));
 
-        // 4. 根据结果刷新或关闭窗口，并返回动作结果。
+        // 4. 按动作结果执行关闭或刷新。
         if (result.ShouldClose || window.Options.AutoCloseOnAction)
         {
             _windows.Remove(windowId);
@@ -149,7 +136,7 @@ public class ActionExecutor
     }
 
     /// <summary>
-    /// 从参数中提取可选摘要字段。
+    /// 从参数中提取可选摘要。
     /// </summary>
     private static string? TryGetSummary(JsonElement? parameters)
     {
@@ -185,22 +172,22 @@ public record ActionExecutedEvent : IEvent
     public string WindowId { get; init; }
 
     /// <summary>
-    /// 执行动作 ID。
+    /// 动作 ID。
     /// </summary>
     public string ActionId { get; init; }
 
     /// <summary>
-    /// 是否执行成功。
+    /// 是否成功。
     /// </summary>
     public bool Success { get; init; }
 
     /// <summary>
-    /// 可选摘要信息。
+    /// 可选摘要。
     /// </summary>
     public string? Summary { get; init; }
 
     /// <summary>
-    /// 创建动作执行完成事件。
+    /// 构造事件。
     /// </summary>
     public ActionExecutedEvent(
         int Seq,
@@ -218,7 +205,7 @@ public record ActionExecutedEvent : IEvent
 }
 
 /// <summary>
-/// 应用创建事件。
+/// 应用启动事件。
 /// </summary>
 public record AppCreatedEvent : IEvent
 {
@@ -228,22 +215,22 @@ public record AppCreatedEvent : IEvent
     public int Seq { get; init; }
 
     /// <summary>
-    /// 应用名称。
+    /// 应用名。
     /// </summary>
     public string AppName { get; init; }
 
     /// <summary>
-    /// 启动目标（可选）。
+    /// 启动目标。
     /// </summary>
     public string? Target { get; init; }
 
     /// <summary>
-    /// 是否创建成功。
+    /// 是否成功。
     /// </summary>
     public bool Success { get; init; }
 
     /// <summary>
-    /// 创建应用创建事件。
+    /// 构造事件。
     /// </summary>
     public AppCreatedEvent(
         int Seq,
