@@ -42,8 +42,8 @@ public static class ActionParser
 
                     calls.Add(new ParsedAction
                     {
-                        WindowId = call.WindowId!,
-                        ActionId = call.ActionId!,
+                        WindowId = call.WindowId!.Trim(),
+                        ActionId = call.ActionId!.Trim(),
                         Parameters = ReadParams(call.Params)
                     });
                 }
@@ -54,8 +54,8 @@ public static class ActionParser
                 // 兼容单条结构：{"window_id":"...","action_id":"...","params":{...}}
                 calls.Add(new ParsedAction
                 {
-                    WindowId = toolCall.WindowId!,
-                    ActionId = toolCall.ActionId!,
+                    WindowId = toolCall.WindowId!.Trim(),
+                    ActionId = toolCall.ActionId!.Trim(),
                     Parameters = ReadParams(toolCall.Params)
                 });
             }
