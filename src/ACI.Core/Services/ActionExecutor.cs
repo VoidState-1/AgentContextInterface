@@ -44,6 +44,8 @@ public class ActionExecutor : IToolExecutor
         string actionId,
         JsonElement? parameters = null)
     {
+        var effectiveActionId = NormalizeActionId(actionId);
+
         // 1. 校验窗口存在。
         var window = _windows.Get(windowId);
         if (window == null)
@@ -52,7 +54,7 @@ public class ActionExecutor : IToolExecutor
         }
 
         // 2. 处理系统保留动作 close。
-        if (actionId == "close")
+        if (string.Equals(effectiveActionId, "close", StringComparison.OrdinalIgnoreCase))
         {
             if (!window.Options.Closable)
             {
@@ -91,7 +93,7 @@ public class ActionExecutor : IToolExecutor
             var context = new ActionContext
             {
                 Window = window,
-                ActionId = actionId,
+                ActionId = effectiveActionId,
                 Parameters = parameters
             };
 
@@ -153,6 +155,25 @@ public class ActionExecutor : IToolExecutor
         return summaryElement.ValueKind == JsonValueKind.String
             ? summaryElement.GetString()
             : summaryElement.ToString();
+    }
+
+    /// <summary>
+    /// 归一化动作 ID（支持 namespace.tool）。
+    /// </summary>
+    private static string NormalizeActionId(string actionId)
+    {
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return actionId;
+        }
+
+        var dotIndex = actionId.IndexOf('.');
+        if (dotIndex <= 0 || dotIndex >= actionId.Length - 1)
+        {
+            return actionId;
+        }
+
+        return actionId[(dotIndex + 1)..];
     }
 }
 

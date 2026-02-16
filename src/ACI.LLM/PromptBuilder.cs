@@ -26,12 +26,13 @@ public static class PromptBuilder
         Field rules:
         - calls: required array
         - window_id: required, target window id
-        - action_id: required, action id exposed by that window
+        - action_id: required, tool id. Prefer `namespace.tool` (for example `system.close`).
         - params: optional object, action parameters
 
         Notes:
         - Do not provide call id; the system assigns it.
         - Do not provide execution mode; mode is defined by the action metadata.
+        - Short tool id is allowed only when it is unambiguous in the window's visible namespaces.
 
         ## Launcher Rules
 

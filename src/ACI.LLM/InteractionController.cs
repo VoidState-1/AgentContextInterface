@@ -3,6 +3,7 @@ using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Runtime;
 using ACI.LLM.Abstractions;
+using ACI.LLM.Services;
 using System.Text;
 using System.Text.Json;
 
@@ -237,16 +238,45 @@ public class InteractionController
     {
         ct.ThrowIfCancellationRequested();
 
-        var resolvedMode = ResolveActionMode(action.WindowId, action.ActionId);
         var callId = $"call_{turn}_{index}";
-        var actionResult = await ExecuteWindowActionAsync(action.WindowId, action.ActionId, action.Parameters);
+        var resolution = ResolveToolCall(action.WindowId, action.ActionId, action.Parameters);
+        if (!resolution.Success || resolution.Action == null)
+        {
+            var failedResult = ActionResult.Fail(resolution.Error ?? "tool resolution failed");
+            var failedStep = new InteractionStep
+            {
+                CallId = callId,
+                WindowId = action.WindowId,
+                ActionId = action.ActionId,
+                ResolvedMode = "sync",
+                Success = false,
+                Message = failedResult.Message,
+                Summary = failedResult.Summary,
+                TaskId = null,
+                Turn = turn,
+                Index = index
+            };
+
+            return new ToolCallExecution
+            {
+                Action = action,
+                Result = failedResult,
+                Step = failedStep
+            };
+        }
+
+        var resolved = resolution.Action;
+        var actionResult = await ExecuteWindowActionAsync(
+            resolved.WindowId,
+            resolved.QualifiedToolId,
+            resolved.Parameters);
 
         var step = new InteractionStep
         {
             CallId = callId,
-            WindowId = action.WindowId,
-            ActionId = action.ActionId,
-            ResolvedMode = resolvedMode == ActionExecutionMode.Async ? "async" : "sync",
+            WindowId = resolved.WindowId,
+            ActionId = resolved.QualifiedToolId,
+            ResolvedMode = resolved.Mode == ActionExecutionMode.Async ? "async" : "sync",
             Success = actionResult.Success,
             Message = actionResult.Message,
             Summary = actionResult.Summary,
@@ -268,15 +298,30 @@ public class InteractionController
     /// </summary>
     private ActionExecutionMode ResolveActionMode(string windowId, string actionId)
     {
-        _ = windowId;
-
-        if (string.Equals(actionId, "close", StringComparison.OrdinalIgnoreCase))
+        var resolution = ResolveToolCall(windowId, actionId, null);
+        if (resolution.Success && resolution.Action != null)
         {
-            return ActionExecutionMode.Sync;
+            return resolution.Action.Mode;
         }
 
-        // 迁移期默认同步，后续由命名空间工具注册表提供精确模式。
+        // 无法解析时回退同步，防止错误分发异步任务。
         return ActionExecutionMode.Sync;
+    }
+
+    /// <summary>
+    /// 解析单次工具调用（支持 namespace.tool 与短名消歧）。
+    /// </summary>
+    private ToolActionResolution ResolveToolCall(string windowId, string actionId, JsonElement? parameters)
+    {
+        var parsed = new ParsedAction
+        {
+            WindowId = windowId,
+            ActionId = actionId,
+            Parameters = parameters
+        };
+
+        var window = _windowManager.Get(windowId);
+        return ToolActionResolver.Resolve(parsed, window, _toolNamespaces);
     }
 
     /// <summary>
