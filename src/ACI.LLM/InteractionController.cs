@@ -24,6 +24,7 @@ public class InteractionController
     private readonly FrameworkHost _host;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
+    private readonly IToolNamespaceRegistry? _toolNamespaces;
     private readonly ActionExecutor _actionExecutor;
     private readonly Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTask;
     private readonly AgentProfile? _agentProfile;
@@ -48,6 +49,7 @@ public class InteractionController
         FrameworkHost host,
         IContextManager contextManager,
         IWindowManager windowManager,
+        IToolNamespaceRegistry? toolNamespaces,
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
         RenderOptions? renderOptions = null,
@@ -57,6 +59,7 @@ public class InteractionController
         _host = host;
         _contextManager = contextManager;
         _windowManager = windowManager;
+        _toolNamespaces = toolNamespaces;
         _actionExecutor = actionExecutor;
         _startBackgroundTask = startBackgroundTask;
         _agentProfile = agentProfile;
@@ -67,6 +70,7 @@ public class InteractionController
             llm,
             _contextManager,
             _windowManager,
+            _toolNamespaces,
             _renderer,
             _renderOptions,
             EnsureInitialized,
@@ -94,7 +98,7 @@ public class InteractionController
         EnsureInitialized();
         PruneContext();
         var activeItems = _contextManager.GetActive();
-        return _renderer.Render(activeItems, _windowManager, _renderOptions);
+        return _renderer.Render(activeItems, _windowManager, _toolNamespaces, _renderOptions);
     }
 
     /// <summary>

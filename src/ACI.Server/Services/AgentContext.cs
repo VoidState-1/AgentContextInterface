@@ -123,6 +123,7 @@ public class AgentContext : IDisposable
             Host,
             Context,
             Windows,
+            ToolNamespaces,
             ActionExecutor,
             renderOptions: new RenderOptions
             {

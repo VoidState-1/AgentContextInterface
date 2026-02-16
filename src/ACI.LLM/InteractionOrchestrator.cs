@@ -38,6 +38,7 @@ internal sealed class InteractionOrchestrator
     private readonly ILLMBridge _llm;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
+    private readonly IToolNamespaceRegistry? _toolNamespaces;
     private readonly IContextRenderer _renderer;
 
     /// <summary>
@@ -55,6 +56,7 @@ internal sealed class InteractionOrchestrator
         ILLMBridge llm,
         IContextManager contextManager,
         IWindowManager windowManager,
+        IToolNamespaceRegistry? toolNamespaces,
         IContextRenderer renderer,
         RenderOptions renderOptions,
         Action ensureInitialized,
@@ -64,6 +66,7 @@ internal sealed class InteractionOrchestrator
         _llm = llm;
         _contextManager = contextManager;
         _windowManager = windowManager;
+        _toolNamespaces = toolNamespaces;
         _renderer = renderer;
         _renderOptions = renderOptions;
         _ensureInitialized = ensureInitialized;
@@ -98,7 +101,7 @@ internal sealed class InteractionOrchestrator
             PruneContext();
 
             var activeItems = _contextManager.GetActive();
-            var messages = _renderer.Render(activeItems, _windowManager, _renderOptions);
+            var messages = _renderer.Render(activeItems, _windowManager, _toolNamespaces, _renderOptions);
             var llmResponse = await _llm.SendAsync(messages, ct);
             if (!llmResponse.Success)
             {
