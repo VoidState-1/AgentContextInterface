@@ -32,15 +32,4 @@ public class ContextAction
             Mode = ActionExecutionMode.Async
         };
     }
-
-    public ActionDefinition ToActionDefinition()
-    {
-        return new ActionDefinition
-        {
-            Id = Id,
-            Label = Label,
-            Mode = Mode,
-            ParamsSchema = Params
-        };
-    }
 }

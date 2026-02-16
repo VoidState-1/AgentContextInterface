@@ -8,8 +8,6 @@ namespace ACI.Framework.Tests.Runtime;
 
 public class ContextActionAndWindowTests
 {
-    // 测试点：AsAsync 应返回新的异步动作定义，且保留原有核心字段。
-    // 预期结果：返回对象 Mode 为 Async，Id/Label/Params 与原动作一致。
     [Fact]
     public void AsAsync_ShouldReturnCopiedActionWithAsyncMode()
     {
@@ -33,34 +31,6 @@ public class ContextActionAndWindowTests
         Assert.Same(original.Params, asyncAction.Params);
     }
 
-    // 测试点：ToActionDefinition 应完整映射动作契约字段。
-    // 预期结果：ActionDefinition 中 id/label/mode/params 全部可用。
-    [Fact]
-    public void ToActionDefinition_ShouldMapAllContractFields()
-    {
-        var action = new ContextAction
-        {
-            Id = "open",
-            Label = "Open File",
-            Mode = ActionExecutionMode.Async,
-            Params = Param.Object(new Dictionary<string, ActionParamSchema>
-            {
-                ["path"] = Param.String()
-            }),
-            Handler = _ => Task.FromResult(ActionResult.Ok())
-        };
-
-        var definition = action.ToActionDefinition();
-
-        Assert.Equal("open", definition.Id);
-        Assert.Equal("Open File", definition.Label);
-        Assert.Equal(ActionExecutionMode.Async, definition.Mode);
-        Assert.NotNull(definition.ParamsSchema);
-        Assert.Equal(ActionParamKind.Object, definition.ParamsSchema!.Kind);
-    }
-
-    // 测试点：ContextWindow.ToWindow 应构建 Core Window 并附带可执行 handler。
-    // 预期结果：转换后窗口包含动作列表，且 handler 执行成功。
     [Fact]
     public async Task ToWindow_ShouldCreateCoreWindowWithExecutableHandler()
     {
@@ -93,8 +63,6 @@ public class ContextActionAndWindowTests
         Assert.Equal("pong", result.Message);
     }
 
-    // 测试点：当 actionId 不存在时，ContextActionHandler 应返回失败结果而非抛异常。
-    // 预期结果：Success 为 false，错误信息包含请求的 actionId。
     [Fact]
     public async Task Handler_WithUnknownActionId_ShouldReturnFailResult()
     {
@@ -125,8 +93,6 @@ public class ContextActionAndWindowTests
         Assert.Contains("missing", result.Message);
     }
 
-    // 测试点：参数对象应在 ActionContext 中按 JSON 结构可读取。
-    // 预期结果：处理器可以读取到字符串参数并正常返回。
     [Fact]
     public async Task Handler_ShouldReadObjectParametersFromActionContext()
     {
