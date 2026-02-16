@@ -19,7 +19,7 @@ public class InteractionControllerTests
         [
             LLMResponse.Ok("""
                            <tool_call>
-                           {"calls":[{"window_id":"demo_window","action_id":"sync_echo","params":{"text":"hello"}}]}
+                           {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"hello"}}]}
                            </tool_call>
                            """),
             LLMResponse.Ok("final assistant response")
@@ -32,7 +32,7 @@ public class InteractionControllerTests
         Assert.True(result.Success);
         Assert.Equal("final assistant response", result.Response);
         Assert.NotNull(result.Action);
-        Assert.Equal("sync_echo", result.Action!.ActionId);
+        Assert.Equal("demo.sync_echo", result.Action!.ActionId);
         Assert.NotNull(result.ActionResult);
         Assert.True(result.ActionResult!.Success);
         Assert.NotNull(result.Steps);
@@ -48,7 +48,7 @@ public class InteractionControllerTests
         var llm = new ConstantLlmBridge(
             LLMResponse.Ok("""
                            <tool_call>
-                           {"calls":[{"window_id":"demo_window","action_id":"sync_echo","params":{"text":"loop"}}]}
+                           {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"loop"}}]}
                            </tool_call>
                            """));
         var sut = CreateController(llm);
@@ -83,7 +83,7 @@ public class InteractionControllerTests
         var sut = CreateController(llm);
         var assistantOutput = """
                               <tool_call>
-                              {"calls":[{"window_id":"demo_window","action_id":"sync_echo","params":{"text":"from-assistant"}}]}
+                              {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"from-assistant"}}]}
                               </tool_call>
                               """;
 
@@ -114,7 +114,7 @@ public class InteractionControllerTests
         var sut = CreateController(llm, startBackgroundTask: startTask);
         var assistantOutput = """
                               <tool_call>
-                              {"calls":[{"window_id":"demo_window","action_id":"async_job"}]}
+                              {"calls":[{"window_id":"demo_window","action_id":"demo.async_job"}]}
                               </tool_call>
                               """;
 
@@ -150,7 +150,7 @@ public class InteractionControllerTests
         var windows = new WindowManager(clock);
         var context = new ContextManager(clock);
         var runtime = new RuntimeContext(windows, events, clock, context,
-            AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(runtime);
         host.Register(new DemoInteractionApp());
         host.Launch("demo_app");
@@ -161,6 +161,7 @@ public class InteractionControllerTests
             host,
             context,
             windows,
+            runtime.ToolNamespaces,
             actionExecutor,
             renderOptions: new RenderOptions
             {
@@ -175,6 +176,28 @@ public class InteractionControllerTests
     {
         public override string Name => "demo_app";
 
+        public override void OnCreate()
+        {
+            RegisterToolNamespace("demo",
+            [
+                new ToolDescriptor
+                {
+                    Id = "sync_echo",
+                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["text"] = "string"
+                    },
+                    Description = "Echo the input text."
+                },
+                new ToolDescriptor
+                {
+                    Id = "async_job",
+                    Mode = ActionExecutionMode.Async,
+                    Description = "Run an async job."
+                }
+            ]);
+        }
+
         public override ContextWindow CreateWindow(string? intent)
         {
             const string windowId = "demo_window";
@@ -185,6 +208,7 @@ public class InteractionControllerTests
                 Id = windowId,
                 Description = new Text("Demo window"),
                 Content = new Text("Demo content"),
+                NamespaceRefs = ["demo"],
                 Actions =
                 [
                     new ContextAction

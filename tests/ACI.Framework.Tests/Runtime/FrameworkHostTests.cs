@@ -36,7 +36,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -70,7 +70,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -78,7 +78,6 @@ public class FrameworkHostTests
         var launched = host.Launch("demo", intent: "init");
         var createdAt = launched.Meta.CreatedAt;
         var beforeContent = launched.Content.Render();
-        var beforeActionId = launched.Actions[0].Id;
 
         host.RefreshWindow(launched.Id);
 
@@ -87,7 +86,6 @@ public class FrameworkHostTests
         Assert.Equal(createdAt, refreshed!.Meta.CreatedAt);
         Assert.True(refreshed.Meta.UpdatedAt > createdAt);
         Assert.NotEqual(beforeContent, refreshed.Content.Render());
-        Assert.NotEqual(beforeActionId, refreshed.Actions[0].Id);
         Assert.Equal(1, app.RefreshCalls);
         Assert.Single(events.PublishedEvents.OfType<WindowRefreshedEvent>());
     }
@@ -176,7 +174,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         return new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
     }
 
     private sealed class TestApp : ContextApp

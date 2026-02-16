@@ -88,7 +88,7 @@ public class ContextActionAndWindowTests
         });
 
         Assert.Equal("toolbox", window.Id);
-        Assert.Single(window.Actions);
+        Assert.NotNull(window.Handler);
         Assert.True(result.Success);
         Assert.Equal("pong", result.Message);
     }

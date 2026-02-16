@@ -27,9 +27,9 @@ public sealed class WindowBuilder
         return this;
     }
 
-    public WindowBuilder AddAction(ActionDefinition action)
+    public WindowBuilder AddNamespace(string namespaceId)
     {
-        _window.Actions.Add(action);
+        _window.NamespaceRefs.Add(namespaceId);
         return this;
     }
 
@@ -38,4 +38,3 @@ public sealed class WindowBuilder
         return _window;
     }
 }
-

@@ -117,7 +117,7 @@ public class RuntimeContextTests
         var events = new SpyEventBus();
         var manager = new ContextManager(clock);
         return new RuntimeContext(windows, events, clock, manager,
-            AgentProfile.Default(), new LocalMessageChannel("test"), provider);
+            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"), provider);
     }
 
     private sealed class TestService
