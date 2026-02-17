@@ -272,9 +272,7 @@ public class SessionManagerTests
         var session = manager.CreateSession();
 
         manager.RequestAutoSave(session.SessionId);
-        await Task.Delay(20);
         manager.RequestAutoSave(session.SessionId);
-        await Task.Delay(20);
         manager.RequestAutoSave(session.SessionId);
 
         await WaitForAsync(() => store.GetSaveCount(session.SessionId) >= 1);
@@ -546,6 +544,7 @@ public class SessionManagerTests
 
         public Task SaveAsync(SessionSnapshot snapshot, CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
             _snapshots[snapshot.SessionId] = snapshot;
             if (_saveCounts.TryGetValue(snapshot.SessionId, out var count))
             {

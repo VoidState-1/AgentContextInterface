@@ -233,5 +233,46 @@ public class ContextStoreTests
         Assert.True(afterActiveCount < beforeActiveCount);
         Assert.Equal(beforeArchiveCount, afterArchiveCount);
     }
-}
 
+    // 测试点：恢复快照时，已被裁剪条目不应重新进入 active 视图。
+    // 预期结果：恢复后的 active 与保存时 active 一致；archive 保持完整历史。
+    [Fact]
+    public void ImportSnapshotItems_ShouldNotResurrectPrunedItemsIntoActive()
+    {
+        var clock = new FakeSeqClock();
+        var store = new ContextStore(clock);
+        var windowManager = new WindowManager(clock);
+
+        store.Add(new ContextItem
+        {
+            Id = "u-1",
+            Type = ContextItemType.User,
+            Content = new string('a', 200)
+        });
+        store.Add(new ContextItem
+        {
+            Id = "u-2",
+            Type = ContextItemType.Assistant,
+            Content = new string('b', 200)
+        });
+
+        store.Prune(
+            new ContextPruner(),
+            windowManager,
+            maxTokens: 10,
+            minConversationTokens: 0,
+            pruneTargetTokens: 5);
+
+        var savedActive = store.ExportActiveItems();
+        var savedArchive = store.ExportArchiveItems();
+        Assert.True(savedArchive.Count > savedActive.Count);
+
+        var restored = new ContextStore(new FakeSeqClock());
+        restored.ImportSnapshotItems(savedActive, savedArchive);
+
+        var restoredActiveIds = restored.GetActive().Select(i => i.Id).ToList();
+        var savedActiveIds = savedActive.Where(i => !i.IsObsolete).Select(i => i.Id).ToList();
+        Assert.Equal(savedActiveIds, restoredActiveIds);
+        Assert.Equal(savedArchive.Count, restored.GetArchive().Count);
+    }
+}

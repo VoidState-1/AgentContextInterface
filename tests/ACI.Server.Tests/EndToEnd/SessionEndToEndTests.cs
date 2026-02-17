@@ -33,7 +33,7 @@ public class SessionEndToEndTests
         [
             LLMResponse.Ok("""
                            <tool_call>
-                           {"calls":[{"window_id":"e2e_window","action_id":"sync_echo","params":{"text":"hello"}}]}
+                           {"calls":[{"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"hello"}}]}
                            </tool_call>
                            """),
             LLMResponse.Ok("final answer")
@@ -59,7 +59,7 @@ public class SessionEndToEndTests
         [
             LLMResponse.Ok("""
                            <tool_call>
-                           {"calls":[{"window_id":"e2e_window","action_id":"async_job"}]}
+                           {"calls":[{"window_id":"e2e_window","action_id":"e2e.async_job"}]}
                            </tool_call>
                            """),
             LLMResponse.Ok("continue talking")
@@ -91,8 +91,8 @@ public class SessionEndToEndTests
         var output = """
                      <tool_call>
                      {"calls":[
-                       {"window_id":"e2e_window","action_id":"sync_echo","params":{"text":"one"}},
-                       {"window_id":"e2e_window","action_id":"sync_echo","params":{"text":"two"}}
+                       {"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"one"}},
+                       {"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"two"}}
                      ]}
                      </tool_call>
                      """;
@@ -144,6 +144,29 @@ public class SessionEndToEndTests
     {
         public override string Name => "e2e_app";
         private const string WindowId = "e2e_window";
+        private const string NamespaceId = "e2e";
+
+        public override void OnCreate()
+        {
+            RegisterToolNamespace(NamespaceId,
+            [
+                new ToolDescriptor
+                {
+                    Id = "sync_echo",
+                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["text"] = "string"
+                    },
+                    Description = "Echo text input."
+                },
+                new ToolDescriptor
+                {
+                    Id = "async_job",
+                    Description = "Run async job and continue interaction.",
+                    Mode = ActionExecutionMode.Async
+                }
+            ]);
+        }
 
         public override ContextWindow CreateWindow(string? intent)
         {
@@ -154,6 +177,7 @@ public class SessionEndToEndTests
                 Id = WindowId,
                 Description = new Text("E2E App"),
                 Content = new Text("E2E content"),
+                NamespaceRefs = [NamespaceId, "system"],
                 Actions =
                 [
                     new ContextAction

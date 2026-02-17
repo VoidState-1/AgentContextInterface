@@ -171,23 +171,35 @@ public class ContextStore
     }
 
     /// <summary>
-    /// 导出所有条目（包含 active 和 archive），用于快照。
+    /// 导出活跃条目（用于恢复运行中的上下文视图）。
     /// </summary>
-    internal IReadOnlyList<ContextItem> ExportItems()
+    internal IReadOnlyList<ContextItem> ExportActiveItems()
     {
         lock (_lock)
         {
-            // 返回 archive（它包含所有历史条目）
+            return _activeItems.ToList();
+        }
+    }
+
+    /// <summary>
+    /// 导出归档条目（包含被裁剪历史），用于快照备份。
+    /// </summary>
+    internal IReadOnlyList<ContextItem> ExportArchiveItems()
+    {
+        lock (_lock)
+        {
             return _archiveItems.ToList();
         }
     }
 
     /// <summary>
-    /// 批量导入历史条目（恢复快照时使用）。
+    /// 批量导入活跃/归档条目（恢复快照时使用）。
     /// 调用后覆盖现有数据。
     /// 注意：不通过 Add 方法注入，直接设置已有的 Seq/IsObsolete 等元数据。
     /// </summary>
-    internal void ImportItems(IReadOnlyList<ContextItem> items)
+    internal void ImportSnapshotItems(
+        IReadOnlyList<ContextItem> activeItems,
+        IReadOnlyList<ContextItem> archiveItems)
     {
         lock (_lock)
         {
@@ -195,9 +207,24 @@ public class ContextStore
             _archiveItems.Clear();
             _archiveById.Clear();
 
-            foreach (var item in items)
+            // 1. 先恢复归档（完整历史）。
+            foreach (var item in archiveItems.OrderBy(i => i.Seq))
+            {
+                _archiveItems.Add(item);
+                _archiveById[item.Id] = item;
+            }
+
+            // 2. 再恢复活跃视图（仅当前参与上下文的条目）。
+            foreach (var item in activeItems.OrderBy(i => i.Seq))
             {
                 _activeItems.Add(item);
+
+                // 兜底：若活跃条目不在归档中，补入归档索引。
+                if (_archiveById.ContainsKey(item.Id))
+                {
+                    continue;
+                }
+
                 _archiveItems.Add(item);
                 _archiveById[item.Id] = item;
             }

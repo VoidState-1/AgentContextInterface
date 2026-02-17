@@ -80,3 +80,4 @@ Plan/
 
 # data
 src/ACI.Server/data/
+.dotnet_home/

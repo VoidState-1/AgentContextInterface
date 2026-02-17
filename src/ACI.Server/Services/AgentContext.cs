@@ -274,18 +274,24 @@ public class AgentContext : IDisposable
             Profile = AgentProfileSnapshot.From(Profile),
             ClockSeq = Clock is SeqClock sc ? sc.CurrentSeq : 0,
             ContextItems = [],
+            ArchiveContextItems = [],
             Apps = Host.TakeAppSnapshots()
         };
 
-        // 导出上下文时间线
+        // 导出上下文时间线（active + archive 分开保存，避免裁剪条目恢复后复活）
         if (Context is ContextManager cm)
         {
             var store = cm.Store;
             if (store is ContextStore cs)
             {
-                foreach (var item in cs.ExportItems())
+                foreach (var item in cs.ExportActiveItems())
                 {
                     snapshot.ContextItems.Add(ContextItemSnapshot.From(item));
+                }
+
+                foreach (var item in cs.ExportArchiveItems())
+                {
+                    snapshot.ArchiveContextItems.Add(ContextItemSnapshot.From(item));
                 }
             }
         }
@@ -309,10 +315,19 @@ public class AgentContext : IDisposable
         // 2. 恢复上下文时间线
         if (Context is ContextManager cm && cm.Store is ContextStore cs)
         {
-            var items = snapshot.ContextItems
+            var activeItems = snapshot.ContextItems
                 .Select(s => s.ToContextItem())
                 .ToList();
-            cs.ImportItems(items);
+
+            // 兼容旧快照：若无 ArchiveContextItems，则使用 ContextItems 作为归档。
+            var archiveSource = snapshot.ArchiveContextItems.Count > 0
+                ? snapshot.ArchiveContextItems
+                : snapshot.ContextItems;
+            var archiveItems = archiveSource
+                .Select(s => s.ToContextItem())
+                .ToList();
+
+            cs.ImportSnapshotItems(activeItems, archiveItems);
         }
 
         // 3. 恢复应用状态

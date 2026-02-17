@@ -51,9 +51,14 @@ public class AgentSnapshot
     public int ClockSeq { get; set; }
 
     /// <summary>
-    /// 上下文时间线条目。
+    /// 活跃上下文时间线条目（当前参与推理）。
     /// </summary>
     public List<ContextItemSnapshot> ContextItems { get; set; } = [];
+
+    /// <summary>
+    /// 上下文归档条目（包含被裁剪历史）。
+    /// </summary>
+    public List<ContextItemSnapshot> ArchiveContextItems { get; set; } = [];
 
     /// <summary>
     /// 各应用快照（使用 ACI.Framework 中的 AppSnapshot）。
