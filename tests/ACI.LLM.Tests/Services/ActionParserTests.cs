@@ -4,7 +4,7 @@ namespace ACI.LLM.Tests.Services;
 
 public class ActionParserTests
 {
-    // 测试点：非 tool_call 文本不应被解析为动作。
+    // 测试点：非 action_call 文本不应被解析为动作。
     // 预期结果：返回 null。
     [Fact]
     public void Parse_WithoutToolCallTag_ShouldReturnNull()
@@ -20,9 +20,9 @@ public class ActionParserTests
     public void Parse_SingleCallPayload_ShouldReturnOneCall()
     {
         var content = """
-                      <tool_call>
+                      <action_call>
                       {"window_id":"w1","action_id":"open","params":{"path":"C:\\"}}
-                      </tool_call>
+                      </action_call>
                       """;
 
         var result = ActionParser.Parse(content);
@@ -41,9 +41,9 @@ public class ActionParserTests
     public void Parse_BatchCallPayload_ShouldKeepOrder()
     {
         var content = """
-                      <tool_call>
+                      <action_call>
                       {"calls":[{"window_id":"w1","action_id":"a1"},{"window_id":"w2","action_id":"a2","params":{"v":1}}]}
-                      </tool_call>
+                      </action_call>
                       """;
 
         var result = ActionParser.Parse(content);
@@ -62,9 +62,9 @@ public class ActionParserTests
     public void Parse_BatchCallMissingRequiredField_ShouldReturnNull()
     {
         var content = """
-                      <tool_call>
+                      <action_call>
                       {"calls":[{"window_id":"w1"},{"window_id":"w2","action_id":"a2"}]}
-                      </tool_call>
+                      </action_call>
                       """;
 
         var result = ActionParser.Parse(content);
@@ -78,9 +78,9 @@ public class ActionParserTests
     public void Parse_ParamsNotObject_ShouldSetParametersNull()
     {
         var content = """
-                      <tool_call>
+                      <action_call>
                       {"window_id":"w1","action_id":"run","params":"not-object"}
-                      </tool_call>
+                      </action_call>
                       """;
 
         var result = ActionParser.Parse(content);
@@ -90,12 +90,12 @@ public class ActionParserTests
         Assert.Null(call.Parameters);
     }
 
-    // 测试点：tool_call 内部 JSON 非法时应安全失败。
+    // 测试点：action_call 内部 JSON 非法时应安全失败。
     // 预期结果：返回 null，不抛出异常。
     [Fact]
     public void Parse_InvalidJson_ShouldReturnNull()
     {
-        var content = "<tool_call>{invalid json}</tool_call>";
+        var content = "<action_call>{invalid json}</action_call>";
 
         var result = ActionParser.Parse(content);
 

@@ -22,7 +22,7 @@ public class ParsedAction
 }
 
 /// <summary>
-/// 一次 tool_call 中解析出的调用批次。
+/// 一次 action_call 中解析出的调用批次。
 /// </summary>
 public class ParsedActionBatch
 {

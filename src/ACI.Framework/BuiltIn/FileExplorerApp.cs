@@ -1,4 +1,4 @@
-﻿using ACI.Core.Models;
+using ACI.Core.Models;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
 
@@ -21,9 +21,9 @@ public sealed class FileExplorerApp : ContextApp
 
     public override void OnCreate()
     {
-        RegisterToolNamespace(Name,
+        RegisterActionNamespace(Name,
         [
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "open_index",
                 Params = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -32,7 +32,7 @@ public sealed class FileExplorerApp : ContextApp
                 },
                 Description = "Open a directory entry by index."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "open_path",
                 Params = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -41,22 +41,22 @@ public sealed class FileExplorerApp : ContextApp
                 },
                 Description = "Open a directory by absolute path."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "up",
                 Description = "Go to parent directory."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "home",
                 Description = "Go to current user home directory."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "drives",
                 Description = "Switch to drive list."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "refresh",
                 Description = "Refresh current listing."

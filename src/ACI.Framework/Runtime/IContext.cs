@@ -32,7 +32,7 @@ public interface IContext
     /// <summary>
     /// 工具命名空间注册表。
     /// </summary>
-    IToolNamespaceRegistry ToolNamespaces { get; }
+    IActionNamespaceRegistry ActionNamespaces { get; }
 
     /// <summary>
     /// 请求刷新窗口。

@@ -5,7 +5,7 @@ using ACI.LLM.Services;
 
 namespace ACI.LLM.Tests.Services;
 
-public class ToolActionResolverTests
+public class ActionCallResolverTests
 {
     [Fact]
     public void Resolve_QualifiedActionId_ShouldResolveSuccessfully()
@@ -24,13 +24,13 @@ public class ToolActionResolverTests
             ActionId = "mailbox.send"
         };
 
-        var resolved = ToolActionResolver.Resolve(parsed, window, registry);
+        var resolved = ActionCallResolver.Resolve(parsed, window, registry);
 
         Assert.True(resolved.Success);
         Assert.NotNull(resolved.Action);
         Assert.Equal("mailbox", resolved.Action!.NamespaceId);
-        Assert.Equal("send", resolved.Action.ToolId);
-        Assert.Equal("mailbox.send", resolved.Action.QualifiedToolId);
+        Assert.Equal("send", resolved.Action.ActionId);
+        Assert.Equal("mailbox.send", resolved.Action.QualifiedActionId);
     }
 
     [Fact]
@@ -50,26 +50,26 @@ public class ToolActionResolverTests
             ActionId = "close"
         };
 
-        var resolved = ToolActionResolver.Resolve(parsed, window, registry);
+        var resolved = ActionCallResolver.Resolve(parsed, window, registry);
 
         Assert.True(resolved.Success);
         Assert.Equal("system", resolved.Action!.NamespaceId);
-        Assert.Equal("close", resolved.Action.ToolId);
+        Assert.Equal("close", resolved.Action.ActionId);
     }
 
     [Fact]
     public void Resolve_ShortActionIdWithMultipleMatches_ShouldFail()
     {
-        var registry = new ToolNamespaceRegistry();
-        registry.Upsert(new ToolNamespaceDefinition
+        var registry = new ActionNamespaceRegistry();
+        registry.Upsert(new ActionNamespaceDefinition
         {
             Id = "a",
-            Tools = [new ToolDescriptor { Id = "run", Description = "run a" }]
+            Actions = [new ActionDescriptor { Id = "run", Description = "run a" }]
         });
-        registry.Upsert(new ToolNamespaceDefinition
+        registry.Upsert(new ActionNamespaceDefinition
         {
             Id = "b",
-            Tools = [new ToolDescriptor { Id = "run", Description = "run b" }]
+            Actions = [new ActionDescriptor { Id = "run", Description = "run b" }]
         });
 
         var window = new Window
@@ -85,7 +85,7 @@ public class ToolActionResolverTests
             ActionId = "run"
         };
 
-        var resolved = ToolActionResolver.Resolve(parsed, window, registry);
+        var resolved = ActionCallResolver.Resolve(parsed, window, registry);
 
         Assert.False(resolved.Success);
         Assert.Contains("Ambiguous", resolved.Error);
@@ -108,21 +108,21 @@ public class ToolActionResolverTests
             ActionId = "system.close"
         };
 
-        var resolved = ToolActionResolver.Resolve(parsed, window, registry);
+        var resolved = ActionCallResolver.Resolve(parsed, window, registry);
 
         Assert.False(resolved.Success);
         Assert.Contains("not visible", resolved.Error);
     }
 
-    private static ToolNamespaceRegistry BuildRegistry()
+    private static ActionNamespaceRegistry BuildRegistry()
     {
-        var registry = new ToolNamespaceRegistry();
-        registry.Upsert(new ToolNamespaceDefinition
+        var registry = new ActionNamespaceRegistry();
+        registry.Upsert(new ActionNamespaceDefinition
         {
             Id = "mailbox",
-            Tools =
+            Actions =
             [
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "send",
                     Description = "send",
@@ -135,12 +135,12 @@ public class ToolActionResolverTests
             ]
         });
 
-        registry.Upsert(new ToolNamespaceDefinition
+        registry.Upsert(new ActionNamespaceDefinition
         {
             Id = "system",
-            Tools =
+            Actions =
             [
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "close",
                     Description = "close"

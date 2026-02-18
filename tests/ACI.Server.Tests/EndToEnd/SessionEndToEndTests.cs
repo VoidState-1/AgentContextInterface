@@ -24,7 +24,7 @@ public class SessionEndToEndTests
         Assert.True(result.Steps == null || result.Steps.Count == 0);
     }
 
-    // 测试点：模型先返回 tool_call 再返回文本时，系统应自动完成一轮工具执行并结束。
+    // 测试点：模型先返回 action_call 再返回文本时，系统应自动完成一轮工具执行并结束。
     // 预期结果：最终响应为第二条文本，且保留 1 条成功步骤记录。
     [Fact]
     public async Task ProcessAsync_ToolCallThenText_ShouldExecuteAndFinish()
@@ -32,9 +32,9 @@ public class SessionEndToEndTests
         using var session = CreateSession(new QueueLlmBridge(
         [
             LLMResponse.Ok("""
-                           <tool_call>
+                           <action_call>
                            {"calls":[{"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"hello"}}]}
-                           </tool_call>
+                           </action_call>
                            """),
             LLMResponse.Ok("final answer")
         ]));
@@ -58,9 +58,9 @@ public class SessionEndToEndTests
         using var session = CreateSession(new QueueLlmBridge(
         [
             LLMResponse.Ok("""
-                           <tool_call>
+                           <action_call>
                            {"calls":[{"window_id":"e2e_window","action_id":"e2e.async_job"}]}
-                           </tool_call>
+                           </action_call>
                            """),
             LLMResponse.Ok("continue talking")
         ]));
@@ -80,7 +80,7 @@ public class SessionEndToEndTests
         Assert.Contains(events, evt => evt.Status == BackgroundTaskStatus.Started && evt.Source == "interaction_action");
     }
 
-    // 测试点：assistant 模拟输出支持一个 tool_call 中多条 calls 顺序执行。
+    // 测试点：assistant 模拟输出支持一个 action_call 中多条 calls 顺序执行。
     // 预期结果：Steps 数量与 calls 一致，Turn 固定为 1，Index 按 1..N 递增。
     [Fact]
     public async Task ProcessAssistantOutputAsync_MultipleCalls_ShouldKeepStepOrder()
@@ -89,12 +89,12 @@ public class SessionEndToEndTests
         session.Host.Launch("e2e_app");
 
         var output = """
-                     <tool_call>
+                     <action_call>
                      {"calls":[
                        {"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"one"}},
                        {"window_id":"e2e_window","action_id":"e2e.sync_echo","params":{"text":"two"}}
                      ]}
-                     </tool_call>
+                     </action_call>
                      """;
 
         var result = await session.RunSerializedAsync(() => session.Interaction.ProcessAssistantOutputAsync(output));
@@ -108,13 +108,13 @@ public class SessionEndToEndTests
         Assert.Equal(2, result.Steps[1].Index);
     }
 
-    // 测试点：非法 tool_call JSON 不应导致崩溃，应按普通文本处理。
+    // 测试点：非法 action_call JSON 不应导致崩溃，应按普通文本处理。
     // 预期结果：Success=true 且 Steps 为空，Response 原样返回。
     [Fact]
     public async Task ProcessAssistantOutputAsync_InvalidToolCallJson_ShouldFallbackToText()
     {
         using var session = CreateSession(new QueueLlmBridge([]));
-        var output = "<tool_call>{invalid json}</tool_call>";
+        var output = "<action_call>{invalid json}</action_call>";
 
         var result = await session.RunSerializedAsync(() => session.Interaction.ProcessAssistantOutputAsync(output));
 
@@ -148,9 +148,9 @@ public class SessionEndToEndTests
 
         public override void OnCreate()
         {
-            RegisterToolNamespace(NamespaceId,
+            RegisterActionNamespace(NamespaceId,
             [
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "sync_echo",
                     Params = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -159,7 +159,7 @@ public class SessionEndToEndTests
                     },
                     Description = "Echo text input."
                 },
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "async_job",
                     Description = "Run async job and continue interaction.",

@@ -145,7 +145,7 @@ public class AppSaveRestoreTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         return new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ActionNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
     }
 
     /// <summary>

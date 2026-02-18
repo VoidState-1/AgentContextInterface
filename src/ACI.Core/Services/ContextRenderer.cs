@@ -52,7 +52,7 @@ public interface IContextRenderer
     IReadOnlyList<LlmMessage> Render(
         IReadOnlyList<ContextItem> items,
         IWindowManager windowManager,
-        IToolNamespaceRegistry? toolNamespaces = null,
+        IActionNamespaceRegistry? actionNamespaces = null,
         RenderOptions? options = null);
 }
 
@@ -67,14 +67,14 @@ public class ContextRenderer : IContextRenderer
     public IReadOnlyList<LlmMessage> Render(
         IReadOnlyList<ContextItem> items,
         IWindowManager windowManager,
-        IToolNamespaceRegistry? toolNamespaces = null,
+        IActionNamespaceRegistry? actionNamespaces = null,
         RenderOptions? options = null)
     {
         _ = options;
         var messages = new List<LlmMessage>();
 
         // 1. 计算当前活跃窗口引用到的命名空间消息（去重）。
-        var namespaceMessages = BuildNamespaceMessages(items, windowManager, toolNamespaces);
+        var namespaceMessages = BuildNamespaceMessages(items, windowManager, actionNamespaces);
         var namespacesInjected = namespaceMessages.Count == 0;
 
         // 2. 按上下文顺序渲染，首次遇到窗口前注入命名空间定义。
@@ -155,9 +155,9 @@ public class ContextRenderer : IContextRenderer
     private static List<LlmMessage> BuildNamespaceMessages(
         IReadOnlyList<ContextItem> items,
         IWindowManager windowManager,
-        IToolNamespaceRegistry? toolNamespaces)
+        IActionNamespaceRegistry? actionNamespaces)
     {
-        if (toolNamespaces == null)
+        if (actionNamespaces == null)
         {
             return [];
         }
@@ -177,7 +177,7 @@ public class ContextRenderer : IContextRenderer
             return [];
         }
 
-        var definitions = toolNamespaces.GetByIds(namespaceIds)
+        var definitions = actionNamespaces.GetByIds(namespaceIds)
             .OrderBy(n => n.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -197,7 +197,7 @@ public class ContextRenderer : IContextRenderer
     /// <summary>
     /// 渲染单个命名空间定义。
     /// </summary>
-    private static string RenderNamespaceDefinition(ToolNamespaceDefinition definition)
+    private static string RenderNamespaceDefinition(ActionNamespaceDefinition definition)
     {
         var xml = new XElement(
             "namespace",

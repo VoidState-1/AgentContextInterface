@@ -1,4 +1,4 @@
-﻿using ACI.Core.Abstractions;
+using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Runtime;
@@ -17,7 +17,7 @@ public class InteractionController
     /// <summary>
     /// 自动工具调用最大轮次。
     /// </summary>
-    private const int MaxAutoToolCallTurns = 12;
+    private const int MaxAutoActionCallTurns = 12;
 
     /// <summary>
     /// 核心依赖服务。
@@ -25,7 +25,7 @@ public class InteractionController
     private readonly FrameworkHost _host;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
-    private readonly IToolNamespaceRegistry? _toolNamespaces;
+    private readonly IActionNamespaceRegistry? _actionNamespaces;
     private readonly ActionExecutor _actionExecutor;
     private readonly Func<string, Func<CancellationToken, Task>, string?, string>? _startBackgroundTask;
     private readonly AgentProfile? _agentProfile;
@@ -50,7 +50,7 @@ public class InteractionController
         FrameworkHost host,
         IContextManager contextManager,
         IWindowManager windowManager,
-        IToolNamespaceRegistry? toolNamespaces,
+        IActionNamespaceRegistry? actionNamespaces,
         ActionExecutor actionExecutor,
         IContextRenderer? renderer = null,
         RenderOptions? renderOptions = null,
@@ -60,7 +60,7 @@ public class InteractionController
         _host = host;
         _contextManager = contextManager;
         _windowManager = windowManager;
-        _toolNamespaces = toolNamespaces;
+        _actionNamespaces = actionNamespaces;
         _actionExecutor = actionExecutor;
         _startBackgroundTask = startBackgroundTask;
         _agentProfile = agentProfile;
@@ -71,12 +71,12 @@ public class InteractionController
             llm,
             _contextManager,
             _windowManager,
-            _toolNamespaces,
+            _actionNamespaces,
             _renderer,
             _renderOptions,
             EnsureInitialized,
-            ExecuteToolCallAsync,
-            MaxAutoToolCallTurns);
+            ExecuteActionCallAsync,
+            MaxAutoActionCallTurns);
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public class InteractionController
         EnsureInitialized();
         PruneContext();
         var activeItems = _contextManager.GetActive();
-        return _renderer.Render(activeItems, _windowManager, _toolNamespaces, _renderOptions);
+        return _renderer.Render(activeItems, _windowManager, _actionNamespaces, _renderOptions);
     }
 
     /// <summary>
@@ -230,7 +230,7 @@ public class InteractionController
     /// <summary>
     /// 执行一次工具调用并生成步骤记录。
     /// </summary>
-    private async Task<ToolCallExecution> ExecuteToolCallAsync(
+    private async Task<ActionCallExecution> ExecuteActionCallAsync(
         ParsedAction action,
         int turn,
         int index,
@@ -239,10 +239,10 @@ public class InteractionController
         ct.ThrowIfCancellationRequested();
 
         var callId = $"call_{turn}_{index}";
-        var resolution = ResolveToolCall(action.WindowId, action.ActionId, action.Parameters);
+        var resolution = ResolveActionCall(action.WindowId, action.ActionId, action.Parameters);
         if (!resolution.Success || resolution.Action == null)
         {
-            var failedResult = ActionResult.Fail(resolution.Error ?? "tool resolution failed");
+            var failedResult = ActionResult.Fail(resolution.Error ?? "action resolution failed");
             var failedStep = new InteractionStep
             {
                 CallId = callId,
@@ -257,7 +257,7 @@ public class InteractionController
                 Index = index
             };
 
-            return new ToolCallExecution
+            return new ActionCallExecution
             {
                 Action = action,
                 Result = failedResult,
@@ -268,14 +268,14 @@ public class InteractionController
         var resolved = resolution.Action;
         var actionResult = await ExecuteWindowActionAsync(
             resolved.WindowId,
-            resolved.QualifiedToolId,
+            resolved.QualifiedActionId,
             resolved.Parameters);
 
         var step = new InteractionStep
         {
             CallId = callId,
             WindowId = resolved.WindowId,
-            ActionId = resolved.QualifiedToolId,
+            ActionId = resolved.QualifiedActionId,
             ResolvedMode = resolved.Mode == ActionExecutionMode.Async ? "async" : "sync",
             Success = actionResult.Success,
             Message = actionResult.Message,
@@ -285,7 +285,7 @@ public class InteractionController
             Index = index
         };
 
-        return new ToolCallExecution
+        return new ActionCallExecution
         {
             Action = action,
             Result = actionResult,
@@ -298,7 +298,7 @@ public class InteractionController
     /// </summary>
     private ActionExecutionMode ResolveActionMode(string windowId, string actionId)
     {
-        var resolution = ResolveToolCall(windowId, actionId, null);
+        var resolution = ResolveActionCall(windowId, actionId, null);
         if (resolution.Success && resolution.Action != null)
         {
             return resolution.Action.Mode;
@@ -309,9 +309,9 @@ public class InteractionController
     }
 
     /// <summary>
-    /// 解析单次工具调用（支持 namespace.tool 与短名消歧）。
+    /// 解析单次工具调用（支持 namespace.action 与短名消歧）。
     /// </summary>
-    private ToolActionResolution ResolveToolCall(string windowId, string actionId, JsonElement? parameters)
+    private ActionCallResolution ResolveActionCall(string windowId, string actionId, JsonElement? parameters)
     {
         var parsed = new ParsedAction
         {
@@ -321,7 +321,7 @@ public class InteractionController
         };
 
         var window = _windowManager.Get(windowId);
-        return ToolActionResolver.Resolve(parsed, window, _toolNamespaces);
+        return ActionCallResolver.Resolve(parsed, window, _actionNamespaces);
     }
 
     /// <summary>

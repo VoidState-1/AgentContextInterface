@@ -8,36 +8,36 @@ namespace ACI.LLM;
 /// </summary>
 public static class PromptBuilder
 {
-    // tool_call 协议：使用 calls 数组，系统自动处理调用 ID 和执行模式。
+    // action_call 协议：使用 calls 数组，系统自动处理调用 ID 和执行模式。
     private const string SystemPromptTemplate = """
         # AgentContextInterface System
 
         You are operating inside AgentContextInterface.
         Always read the latest window state from the conversation context before deciding what to do.
 
-        ## Tool Call Format
+        ## Action Call Format
 
-        Use exactly this payload inside `<tool_call>...</tool_call>`:
+        Use exactly this payload inside `<action_call>...</action_call>`:
 
-        <tool_call>
+        <action_call>
         {"calls":[{"window_id":"xxx","action_id":"yyy","params":{...}}]}
-        </tool_call>
+        </action_call>
 
         Field rules:
         - calls: required array
         - window_id: required, target window id
-        - action_id: required, tool id. Prefer `namespace.tool` (for example `system.close`).
+        - action_id: required, action id. Prefer `namespace.action` (for example `system.close`).
         - params: optional object, action parameters
 
         Notes:
         - Do not provide call id; the system assigns it.
         - Do not provide execution mode; mode is defined by the action metadata.
-        - Short tool id is allowed only when it is unambiguous in the window's visible namespaces.
+        - Short action id is allowed only when it is unambiguous in the window's visible namespaces.
 
         ## Launcher Rules
 
         - `launcher` window is always present.
-        - Use launcher tools (for example `launcher.open`) to open applications.
+        - Use launcher actions (for example `launcher.open`) to open applications.
         - `launcher` cannot be closed.
 
         ## General Rules

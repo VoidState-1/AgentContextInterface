@@ -36,7 +36,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ActionNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -70,7 +70,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         var context = new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ActionNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(context);
         var app = new TestApp("demo");
         host.Register(app);
@@ -174,7 +174,7 @@ public class FrameworkHostTests
         var windows = new WindowManager(clock);
         var events = new SpyEventBus();
         return new RuntimeContext(windows, events, clock, new ContextManager(clock),
-            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ActionNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
     }
 
     private sealed class TestApp : ContextApp

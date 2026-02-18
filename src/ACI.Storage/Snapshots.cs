@@ -77,7 +77,7 @@ public class AgentProfileSnapshot
     public string? Model { get; set; }
     public int MaxTokenBudget { get; set; }
     public int MaxResponseTimeSeconds { get; set; }
-    public int MaxToolCallTurns { get; set; }
+    public int MaxActionCallTurns { get; set; }
 
     public static AgentProfileSnapshot From(AgentProfile profile) => new()
     {
@@ -87,7 +87,7 @@ public class AgentProfileSnapshot
         Model = profile.Model,
         MaxTokenBudget = profile.MaxTokenBudget,
         MaxResponseTimeSeconds = profile.MaxResponseTimeSeconds,
-        MaxToolCallTurns = profile.MaxToolCallTurns
+        MaxActionCallTurns = profile.MaxActionCallTurns
     };
 
     public AgentProfile ToProfile() => new()
@@ -98,7 +98,7 @@ public class AgentProfileSnapshot
         Model = Model,
         MaxTokenBudget = MaxTokenBudget,
         MaxResponseTimeSeconds = MaxResponseTimeSeconds,
-        MaxToolCallTurns = MaxToolCallTurns
+        MaxActionCallTurns = MaxActionCallTurns
     };
 }
 

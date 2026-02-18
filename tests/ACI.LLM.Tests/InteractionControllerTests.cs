@@ -10,7 +10,7 @@ namespace ACI.LLM.Tests;
 
 public class InteractionControllerTests
 {
-    // 测试点：当模型先返回 tool_call 再返回普通文本时，系统应自动继续循环。
+    // 测试点：当模型先返回 action_call 再返回普通文本时，系统应自动继续循环。
     // 预期结果：LLM 被调用两次，最终响应为普通文本，且产出 1 条步骤记录。
     [Fact]
     public async Task ProcessAsync_ToolCallThenText_ShouldAutoLoopUntilText()
@@ -18,9 +18,9 @@ public class InteractionControllerTests
         var llm = new QueueLlmBridge(
         [
             LLMResponse.Ok("""
-                           <tool_call>
+                           <action_call>
                            {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"hello"}}]}
-                           </tool_call>
+                           </action_call>
                            """),
             LLMResponse.Ok("final assistant response")
         ]);
@@ -40,16 +40,16 @@ public class InteractionControllerTests
         Assert.Equal(2, llm.CallCount);
     }
 
-    // 测试点：连续超过最大 tool_call 轮次时必须安全终止。
-    // 预期结果：返回失败结果，错误信息包含 consecutive tool_call turns。
+    // 测试点：连续超过最大 action_call 轮次时必须安全终止。
+    // 预期结果：返回失败结果，错误信息包含 consecutive action_call turns。
     [Fact]
     public async Task ProcessAsync_TooManyToolCallTurns_ShouldFailSafely()
     {
         var llm = new ConstantLlmBridge(
             LLMResponse.Ok("""
-                           <tool_call>
+                           <action_call>
                            {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"loop"}}]}
-                           </tool_call>
+                           </action_call>
                            """));
         var sut = CreateController(llm);
 
@@ -57,7 +57,7 @@ public class InteractionControllerTests
 
         Assert.False(result.Success);
         Assert.NotNull(result.Error);
-        Assert.Contains("consecutive tool_call turns", result.Error);
+        Assert.Contains("consecutive action_call turns", result.Error);
     }
 
     // 测试点：LLM 调用失败时应直接返回失败，不进入后续工具执行。
@@ -74,7 +74,7 @@ public class InteractionControllerTests
         Assert.Equal("llm unavailable", result.Error);
     }
 
-    // 测试点：assistant 输出中含 tool_call 时，应执行动作并返回步骤列表。
+    // 测试点：assistant 输出中含 action_call 时，应执行动作并返回步骤列表。
     // 预期结果：步骤数量为 1，步骤携带 callId 与成功状态。
     [Fact]
     public async Task ProcessAssistantOutputAsync_WithToolCall_ShouldExecuteAndReturnSteps()
@@ -82,9 +82,9 @@ public class InteractionControllerTests
         var llm = new QueueLlmBridge([]);
         var sut = CreateController(llm);
         var assistantOutput = """
-                              <tool_call>
+                              <action_call>
                               {"calls":[{"window_id":"demo_window","action_id":"demo.sync_echo","params":{"text":"from-assistant"}}]}
-                              </tool_call>
+                              </action_call>
                               """;
 
         var result = await sut.ProcessAssistantOutputAsync(assistantOutput);
@@ -113,9 +113,9 @@ public class InteractionControllerTests
 
         var sut = CreateController(llm, startBackgroundTask: startTask);
         var assistantOutput = """
-                              <tool_call>
+                              <action_call>
                               {"calls":[{"window_id":"demo_window","action_id":"demo.async_job"}]}
-                              </tool_call>
+                              </action_call>
                               """;
 
         var result = await sut.ProcessAssistantOutputAsync(assistantOutput);
@@ -150,7 +150,7 @@ public class InteractionControllerTests
         var windows = new WindowManager(clock);
         var context = new ContextManager(clock);
         var runtime = new RuntimeContext(windows, events, clock, context,
-            new ToolNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
+            new ActionNamespaceRegistry(), AgentProfile.Default(), new LocalMessageChannel("test"));
         var host = new FrameworkHost(runtime);
         host.Register(new DemoInteractionApp());
         host.Launch("demo_app");
@@ -161,7 +161,7 @@ public class InteractionControllerTests
             host,
             context,
             windows,
-            runtime.ToolNamespaces,
+            runtime.ActionNamespaces,
             actionExecutor,
             renderOptions: new RenderOptions
             {
@@ -178,9 +178,9 @@ public class InteractionControllerTests
 
         public override void OnCreate()
         {
-            RegisterToolNamespace("demo",
+            RegisterActionNamespace("demo",
             [
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "sync_echo",
                     Params = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -189,7 +189,7 @@ public class InteractionControllerTests
                     },
                     Description = "Echo the input text."
                 },
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "async_job",
                     Mode = ActionExecutionMode.Async,

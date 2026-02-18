@@ -36,7 +36,7 @@ public class AgentContext : IDisposable
     public IEventBus Events { get; }
     public IWindowManager Windows { get; }
     public IContextManager Context { get; }
-    public IToolNamespaceRegistry ToolNamespaces { get; }
+    public IActionNamespaceRegistry ActionNamespaces { get; }
 
     /// <summary>
     /// Framework 层服务
@@ -93,12 +93,12 @@ public class AgentContext : IDisposable
         Events = new EventBus();
         Windows = new WindowManager(Clock);
         Context = new ContextManager(Clock);
-        ToolNamespaces = new ToolNamespaceRegistry();
+        ActionNamespaces = new ActionNamespaceRegistry();
         Windows.OnChanged += OnWindowChanged;
 
         // 4. 初始化 Framework 层（含 MessageChannel）
         LocalMessageChannel = new LocalMessageChannel(profile.Id);
-        Runtime = new RuntimeContext(Windows, Events, Clock, Context, ToolNamespaces, profile, LocalMessageChannel);
+        Runtime = new RuntimeContext(Windows, Events, Clock, Context, ActionNamespaces, profile, LocalMessageChannel);
         _taskRunner = new SessionTaskRunner(Events, Clock);
         Runtime.ConfigureBackgroundTaskHandlers(
             (windowId, taskBody, taskId) => _taskRunner.Start(windowId, taskBody, taskId),
@@ -123,7 +123,7 @@ public class AgentContext : IDisposable
             Host,
             Context,
             Windows,
-            ToolNamespaces,
+            ActionNamespaces,
             ActionExecutor,
             renderOptions: new RenderOptions
             {
@@ -156,12 +156,12 @@ public class AgentContext : IDisposable
     /// </summary>
     private void RegisterSystemNamespace()
     {
-        ToolNamespaces.Upsert(new ToolNamespaceDefinition
+        ActionNamespaces.Upsert(new ActionNamespaceDefinition
         {
             Id = "system",
-            Tools =
+            Actions =
             [
-                new ToolDescriptor
+                new ActionDescriptor
                 {
                     Id = "close",
                     Params = new Dictionary<string, string>(StringComparer.Ordinal)

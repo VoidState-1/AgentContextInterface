@@ -9,7 +9,7 @@ namespace ACI.LLM;
 /// <summary>
 /// 单次工具调用执行结果。
 /// </summary>
-internal sealed class ToolCallExecution
+internal sealed class ActionCallExecution
 {
     /// <summary>
     /// 解析后的工具调用动作。
@@ -38,16 +38,16 @@ internal sealed class InteractionOrchestrator
     private readonly ILLMBridge _llm;
     private readonly IContextManager _contextManager;
     private readonly IWindowManager _windowManager;
-    private readonly IToolNamespaceRegistry? _toolNamespaces;
+    private readonly IActionNamespaceRegistry? _actionNamespaces;
     private readonly IContextRenderer _renderer;
 
     /// <summary>
     /// 循环配置与委托。
     /// </summary>
     private readonly RenderOptions _renderOptions;
-    private readonly int _maxAutoToolCallTurns;
+    private readonly int _maxAutoActionCallTurns;
     private readonly Action _ensureInitialized;
-    private readonly Func<ParsedAction, int, int, CancellationToken, Task<ToolCallExecution>> _executeToolCallAsync;
+    private readonly Func<ParsedAction, int, int, CancellationToken, Task<ActionCallExecution>> _executeActionCallAsync;
 
     /// <summary>
     /// 创建交互编排器。
@@ -56,22 +56,22 @@ internal sealed class InteractionOrchestrator
         ILLMBridge llm,
         IContextManager contextManager,
         IWindowManager windowManager,
-        IToolNamespaceRegistry? toolNamespaces,
+        IActionNamespaceRegistry? actionNamespaces,
         IContextRenderer renderer,
         RenderOptions renderOptions,
         Action ensureInitialized,
-        Func<ParsedAction, int, int, CancellationToken, Task<ToolCallExecution>> executeToolCallAsync,
-        int maxAutoToolCallTurns)
+        Func<ParsedAction, int, int, CancellationToken, Task<ActionCallExecution>> executeActionCallAsync,
+        int maxAutoActionCallTurns)
     {
         _llm = llm;
         _contextManager = contextManager;
         _windowManager = windowManager;
-        _toolNamespaces = toolNamespaces;
+        _actionNamespaces = actionNamespaces;
         _renderer = renderer;
         _renderOptions = renderOptions;
         _ensureInitialized = ensureInitialized;
-        _executeToolCallAsync = executeToolCallAsync;
-        _maxAutoToolCallTurns = maxAutoToolCallTurns;
+        _executeActionCallAsync = executeActionCallAsync;
+        _maxAutoActionCallTurns = maxAutoActionCallTurns;
     }
 
     /// <summary>
@@ -95,13 +95,13 @@ internal sealed class InteractionOrchestrator
         var totalUsage = new TokenUsage();
         var steps = new List<InteractionStep>();
 
-        // 2. 循环请求 LLM，直到返回非 tool_call 内容或达到轮次上限。
-        for (var turn = 0; turn <= _maxAutoToolCallTurns; turn++)
+        // 2. 循环请求 LLM，直到返回非 action_call 内容或达到轮次上限。
+        for (var turn = 0; turn <= _maxAutoActionCallTurns; turn++)
         {
             PruneContext();
 
             var activeItems = _contextManager.GetActive();
-            var messages = _renderer.Render(activeItems, _windowManager, _toolNamespaces, _renderOptions);
+            var messages = _renderer.Render(activeItems, _windowManager, _actionNamespaces, _renderOptions);
             var llmResponse = await _llm.SendAsync(messages, ct);
             if (!llmResponse.Success)
             {
@@ -118,7 +118,7 @@ internal sealed class InteractionOrchestrator
                 Content = lastResponseContent
             });
 
-            // 3. 若返回普通文本则结束；若为 tool_call 则顺序执行每个调用。
+            // 3. 若返回普通文本则结束；若为 action_call 则顺序执行每个调用。
             var parsedActionBatch = ActionParser.Parse(lastResponseContent);
             if (parsedActionBatch == null)
             {
@@ -129,7 +129,7 @@ internal sealed class InteractionOrchestrator
             for (var index = 0; index < parsedActionBatch.Calls.Count; index++)
             {
                 var parsedAction = parsedActionBatch.Calls[index];
-                var execution = await _executeToolCallAsync(parsedAction, turn + 1, index + 1, ct);
+                var execution = await _executeActionCallAsync(parsedAction, turn + 1, index + 1, ct);
 
                 lastAction = execution.Action;
                 lastActionResult = execution.Result;
@@ -140,7 +140,7 @@ internal sealed class InteractionOrchestrator
         // 4. 超过自动循环上限后返回失败，避免无限循环。
         PruneContext();
         return InteractionResult.Fail(
-            $"executed {_maxAutoToolCallTurns + 1} consecutive tool_call turns without a non-tool response");
+            $"executed {_maxAutoActionCallTurns + 1} consecutive action_call turns without a non-action response");
     }
 
     /// <summary>
@@ -168,7 +168,7 @@ internal sealed class InteractionOrchestrator
             for (var index = 0; index < parsedActionBatch.Calls.Count; index++)
             {
                 var parsedAction = parsedActionBatch.Calls[index];
-                var execution = await _executeToolCallAsync(parsedAction, 1, index + 1, ct);
+                var execution = await _executeActionCallAsync(parsedAction, 1, index + 1, ct);
 
                 lastAction = execution.Action;
                 lastActionResult = execution.Result;

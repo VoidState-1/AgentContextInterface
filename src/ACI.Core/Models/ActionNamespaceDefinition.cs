@@ -1,24 +1,24 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace ACI.Core.Models;
 
 /// <summary>
-/// 命名空间下的工具描述。
+/// 命名空间下的 Action 描述。
 /// </summary>
-public sealed class ToolDescriptor
+public sealed class ActionDescriptor
 {
     /// <summary>
-    /// 工具标识（命名空间内唯一）。
+    /// Action 标识（命名空间内唯一）。
     /// </summary>
     public required string Id { get; init; }
 
     /// <summary>
-    /// 参数定义，键为参数名，值为简写类型（如 string / string? / array<string>）。
+    /// 参数定义，键为参数名，值为签名字符串（如 string / string? / array<string>）。
     /// </summary>
     public Dictionary<string, string> Params { get; init; } = [];
 
     /// <summary>
-    /// 工具说明。
+    /// Action 说明。
     /// </summary>
     public string Description { get; init; } = string.Empty;
 
@@ -42,9 +42,9 @@ public sealed class ToolDescriptor
 }
 
 /// <summary>
-/// 工具命名空间定义。
+/// Action 命名空间定义。
 /// </summary>
-public sealed class ToolNamespaceDefinition
+public sealed class ActionNamespaceDefinition
 {
     /// <summary>
     /// 命名空间标识。
@@ -52,16 +52,16 @@ public sealed class ToolNamespaceDefinition
     public required string Id { get; init; }
 
     /// <summary>
-    /// 命名空间内的工具列表。
+    /// 命名空间内的 Action 列表。
     /// </summary>
-    public List<ToolDescriptor> Tools { get; init; } = [];
+    public List<ActionDescriptor> Actions { get; init; } = [];
 
     /// <summary>
-    /// 将工具列表渲染为 JSON 字符串。
+    /// 将 Action 列表渲染为 JSON 字符串。
     /// </summary>
     public string RenderPromptJson()
     {
-        var promptTools = Tools.Select(t => t.ToPromptObject()).ToList();
-        return JsonSerializer.Serialize(promptTools);
+        var promptActions = Actions.Select(t => t.ToPromptObject()).ToList();
+        return JsonSerializer.Serialize(promptActions);
     }
 }

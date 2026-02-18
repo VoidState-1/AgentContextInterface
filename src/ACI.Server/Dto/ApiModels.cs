@@ -24,7 +24,7 @@ public class AgentProfileDto
     public string? Model { get; set; }
     public int MaxTokenBudget { get; set; }
     public int MaxResponseTimeSeconds { get; set; }
-    public int MaxToolCallTurns { get; set; }
+    public int MaxActionCallTurns { get; set; }
 
     public AgentProfile ToProfile() => new()
     {
@@ -34,7 +34,7 @@ public class AgentProfileDto
         Model = Model,
         MaxTokenBudget = MaxTokenBudget,
         MaxResponseTimeSeconds = MaxResponseTimeSeconds,
-        MaxToolCallTurns = MaxToolCallTurns
+        MaxActionCallTurns = MaxActionCallTurns
     };
 }
 

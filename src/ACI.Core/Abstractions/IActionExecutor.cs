@@ -6,7 +6,7 @@ namespace ACI.Core.Abstractions;
 /// <summary>
 /// 工具执行器接口。
 /// </summary>
-public interface IToolExecutor
+public interface IActionExecutor
 {
     /// <summary>
     /// 在目标窗口上执行工具。

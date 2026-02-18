@@ -140,20 +140,20 @@ public abstract class ContextApp
     /// <summary>
     /// 注册或覆盖工具命名空间。
     /// </summary>
-    protected void RegisterToolNamespace(ToolNamespaceDefinition definition)
+    protected void RegisterActionNamespace(ActionNamespaceDefinition definition)
     {
-        Context.ToolNamespaces.Upsert(definition);
+        Context.ActionNamespaces.Upsert(definition);
     }
 
     /// <summary>
     /// 按命名空间和工具列表注册工具。
     /// </summary>
-    protected void RegisterToolNamespace(string namespaceId, IEnumerable<ToolDescriptor> tools)
+    protected void RegisterActionNamespace(string namespaceId, IEnumerable<ActionDescriptor> actions)
     {
-        RegisterToolNamespace(new ToolNamespaceDefinition
+        RegisterActionNamespace(new ActionNamespaceDefinition
         {
             Id = namespaceId,
-            Tools = tools.ToList()
+            Actions = actions.ToList()
         });
     }
 

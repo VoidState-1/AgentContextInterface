@@ -31,9 +31,9 @@ public class AppLauncher : ContextApp
     /// </summary>
     public override void OnCreate()
     {
-        RegisterToolNamespace("launcher",
+        RegisterActionNamespace("launcher",
         [
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "open",
                 Params = new Dictionary<string, string>(StringComparer.Ordinal)

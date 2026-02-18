@@ -106,7 +106,7 @@ internal sealed class ContextActionHandler : IActionHandler
     }
 
     /// <summary>
-    /// 归一化动作 ID（支持 namespace.tool）。
+    /// 归一化动作 ID（支持 namespace.action）。
     /// </summary>
     private static string NormalizeActionId(string actionId)
     {

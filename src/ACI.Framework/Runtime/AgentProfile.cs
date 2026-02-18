@@ -40,7 +40,7 @@ public class AgentProfile
     /// <summary>
     /// 单次交互最大工具调用轮次。0 = 使用系统默认值。
     /// </summary>
-    public int MaxToolCallTurns { get; init; } = 0;
+    public int MaxActionCallTurns { get; init; } = 0;
 
     /// <summary>
     /// 创建单 Agent 场景下的默认 Profile。

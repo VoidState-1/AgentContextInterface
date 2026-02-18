@@ -16,7 +16,7 @@ public class RuntimeContext : IContext
     private readonly IEventBus _events;
     private readonly ISeqClock _clock;
     private readonly IContextManager _context;
-    private readonly IToolNamespaceRegistry _toolNamespaces;
+    private readonly IActionNamespaceRegistry _actionNamespaces;
     private readonly AgentProfile _profile;
     private readonly LocalMessageChannel _messageChannel;
     private readonly IServiceProvider? _serviceProvider;
@@ -37,7 +37,7 @@ public class RuntimeContext : IContext
         IEventBus events,
         ISeqClock clock,
         IContextManager context,
-        IToolNamespaceRegistry toolNamespaces,
+        IActionNamespaceRegistry actionNamespaces,
         AgentProfile profile,
         LocalMessageChannel messageChannel,
         IServiceProvider? serviceProvider = null)
@@ -46,7 +46,7 @@ public class RuntimeContext : IContext
         _events = events;
         _clock = clock;
         _context = context;
-        _toolNamespaces = toolNamespaces;
+        _actionNamespaces = actionNamespaces;
         _profile = profile;
         _messageChannel = messageChannel;
         _serviceProvider = serviceProvider;
@@ -75,7 +75,7 @@ public class RuntimeContext : IContext
     /// <summary>
     /// 工具命名空间注册表。
     /// </summary>
-    public IToolNamespaceRegistry ToolNamespaces => _toolNamespaces;
+    public IActionNamespaceRegistry ActionNamespaces => _actionNamespaces;
 
     /// <summary>
     /// 当前 Agent 配置。

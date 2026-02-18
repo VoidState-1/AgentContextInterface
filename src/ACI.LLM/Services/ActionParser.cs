@@ -9,7 +9,7 @@ namespace ACI.LLM.Services;
 /// </summary>
 public static class ActionParser
 {
-    private static readonly Regex ToolCallRegex = new(@"<tool_call>(.*?)</tool_call>", RegexOptions.Singleline);
+    private static readonly Regex ActionCallRegex = new(@"<action_call>(.*?)</action_call>", RegexOptions.Singleline);
 
     /// <summary>
     /// 解析 AI 响应
@@ -18,13 +18,13 @@ public static class ActionParser
     {
         if (string.IsNullOrWhiteSpace(content)) return null;
 
-        var match = ToolCallRegex.Match(content);
+        var match = ActionCallRegex.Match(content);
         if (!match.Success) return null;
 
         try
         {
             var json = match.Groups[1].Value.Trim();
-            var toolCall = JsonSerializer.Deserialize<ToolActionCall>(json, new JsonSerializerOptions
+            var toolCall = JsonSerializer.Deserialize<ActionCallPayload>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
@@ -78,10 +78,10 @@ public static class ActionParser
         return null;
     }
 
-    private class ToolActionCall
+    private class ActionCallPayload
     {
         [JsonPropertyName("calls")]
-        public List<ToolActionItem> Calls { get; set; } = [];
+        public List<ActionCallItem> Calls { get; set; } = [];
 
         [JsonPropertyName("window_id")]
         public string? WindowId { get; set; }
@@ -93,7 +93,7 @@ public static class ActionParser
         public JsonElement? Params { get; set; }
     }
 
-    private class ToolActionItem
+    private class ActionCallItem
     {
         [JsonPropertyName("window_id")]
         public string? WindowId { get; set; }

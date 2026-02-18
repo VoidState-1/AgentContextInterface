@@ -1,4 +1,4 @@
-﻿using ACI.Core.Models;
+using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
@@ -42,9 +42,9 @@ public class ActivityLog : ContextApp
     /// </summary>
     public override void OnCreate()
     {
-        RegisterToolNamespace(Name,
+        RegisterActionNamespace(Name,
         [
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "clear",
                 Description = "Clear generated activity log windows."

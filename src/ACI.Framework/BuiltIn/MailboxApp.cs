@@ -27,9 +27,9 @@ public class MailboxApp : ContextApp
 
     public override void OnCreate()
     {
-        RegisterToolNamespace(Name,
+        RegisterActionNamespace(Name,
         [
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "send",
                 Params = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -39,7 +39,7 @@ public class MailboxApp : ContextApp
                 },
                 Description = "Send a message to another agent."
             },
-            new ToolDescriptor
+            new ActionDescriptor
             {
                 Id = "mark_read",
                 Description = "Mark all mailbox messages as read."

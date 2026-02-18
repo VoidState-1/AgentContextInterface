@@ -7,7 +7,7 @@ namespace ACI.Core.Services;
 /// <summary>
 /// 执行窗口动作并发布执行事件。
 /// </summary>
-public class ActionExecutor : IToolExecutor
+public class ActionExecutor : IActionExecutor
 {
     /// <summary>
     /// 核心依赖。
@@ -158,7 +158,7 @@ public class ActionExecutor : IToolExecutor
     }
 
     /// <summary>
-    /// 归一化动作 ID（支持 namespace.tool）。
+    /// 归一化动作 ID（支持 namespace.action）。
     /// </summary>
     private static string NormalizeActionId(string actionId)
     {
