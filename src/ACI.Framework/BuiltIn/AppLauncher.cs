@@ -1,4 +1,4 @@
-using ACI.Core.Models;
+﻿using ACI.Core.Models;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
 
@@ -27,20 +27,21 @@ public class AppLauncher : ContextApp
     public override string? AppDescription => "Browse and launch installed applications.";
 
     /// <summary>
-    /// 注册命名空间工具定义。
+    /// 注册 launcher 命名空间动作。
     /// </summary>
     public override void OnCreate()
     {
         RegisterActionNamespace("launcher",
         [
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "open",
-                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                Description = "Open an application by name.",
+                Params = Param.Object(new()
                 {
-                    ["app"] = "string"
-                },
-                Description = "Open an application by name."
+                    ["app"] = Param.String()
+                }),
+                Handler = HandleOpenAsync
             }
         ]);
     }
@@ -62,34 +63,27 @@ public class AppLauncher : ContextApp
                 Closable = false,
                 PinInPrompt = true
             },
-            Actions =
-            [
-                new ContextAction
-                {
-                    Id = "open",
-                    Label = "Open App",
-                    Params = Param.Object(new()
-                    {
-                        ["app"] = Param.String()
-                    }),
-                    Handler = async ctx =>
-                    {
-                        var appName = ctx.GetString("app");
-                        if (string.IsNullOrEmpty(appName))
-                        {
-                            return ActionResult.Fail("Please specify an app name.");
-                        }
-
-                        // 返回 launch 指令，由 InteractionController 统一执行启动流程。
-                        return ActionResult.Ok(
-                            summary: $"Open app {appName}",
-                            shouldClose: false,
-                            data: new { action = "launch", app = appName, close_source = true }
-                        );
-                    }
-                }
-            ]
+            Actions = ResolveRegisteredActions(["launcher"])
         };
+    }
+
+    /// <summary>
+    /// 处理 open 动作。
+    /// </summary>
+    private static Task<ActionResult> HandleOpenAsync(ACI.Core.Abstractions.ActionContext ctx)
+    {
+        var appName = ctx.GetString("app");
+        if (string.IsNullOrEmpty(appName))
+        {
+            return Task.FromResult(ActionResult.Fail("Please specify an app name."));
+        }
+
+        // 返回 launch 指令，由 InteractionController 统一执行启动流程。
+        return Task.FromResult(ActionResult.Ok(
+            summary: $"Open app {appName}",
+            shouldClose: false,
+            data: new { action = "launch", app = appName, close_source = true }
+        ));
     }
 
     /// <summary>
@@ -112,6 +106,7 @@ public class AppLauncher : ContextApp
             {
                 line += $" - {description}";
             }
+
             components.Add(new Text(line));
         }
 

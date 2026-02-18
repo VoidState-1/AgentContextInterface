@@ -230,7 +230,7 @@ public class FrameworkHostTests
                     new ContextAction
                     {
                         Id = $"run_v{version}",
-                        Label = "Run",
+                        Description = "Run",
                         Handler = _ => Task.FromResult(ActionResult.Ok())
                     }
                 ]

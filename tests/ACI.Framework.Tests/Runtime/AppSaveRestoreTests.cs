@@ -193,7 +193,7 @@ public class AppSaveRestoreTests
                     new ContextAction
                     {
                         Id = "noop",
-                        Label = "Do Nothing",
+                        Description = "Do Nothing",
                         Handler = _ => Task.FromResult(ActionResult.Ok())
                     }
                 ]

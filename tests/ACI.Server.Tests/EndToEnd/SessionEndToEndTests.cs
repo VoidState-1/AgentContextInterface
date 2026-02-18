@@ -150,21 +150,33 @@ public class SessionEndToEndTests
         {
             RegisterActionNamespace(NamespaceId,
             [
-                new ActionDescriptor
+                new ContextAction
                 {
                     Id = "sync_echo",
-                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Description = "Echo text input.",
+                    Params = Param.Object(new Dictionary<string, ActionParamSchema>
                     {
-                        ["text"] = "string"
-                    },
-                    Description = "Echo text input."
+                        ["text"] = Param.String()
+                    }),
+                    Handler = ctx =>
+                    {
+                        var text = ctx.GetString("text");
+                        return Task.FromResult(ActionResult.Ok(
+                            message: text,
+                            summary: $"echo:{text}",
+                            shouldRefresh: false));
+                    }
                 },
-                new ActionDescriptor
+                new ContextAction
                 {
                     Id = "async_job",
                     Description = "Run async job and continue interaction.",
-                    Mode = ActionExecutionMode.Async
-                }
+                    Handler = async _ =>
+                    {
+                        await Task.Delay(30);
+                        return ActionResult.Ok(message: "async done", shouldRefresh: false);
+                    }
+                }.AsAsync()
             ]);
         }
 
@@ -178,36 +190,7 @@ public class SessionEndToEndTests
                 Description = new Text("E2E App"),
                 Content = new Text("E2E content"),
                 NamespaceRefs = [NamespaceId, "system"],
-                Actions =
-                [
-                    new ContextAction
-                    {
-                        Id = "sync_echo",
-                        Label = "Sync Echo",
-                        Params = Param.Object(new Dictionary<string, ActionParamSchema>
-                        {
-                            ["text"] = Param.String()
-                        }),
-                        Handler = ctx =>
-                        {
-                            var text = ctx.GetString("text");
-                            return Task.FromResult(ActionResult.Ok(
-                                message: text,
-                                summary: $"echo:{text}",
-                                shouldRefresh: false));
-                        }
-                    },
-                    new ContextAction
-                    {
-                        Id = "async_job",
-                        Label = "Async Job",
-                        Handler = async _ =>
-                        {
-                            await Task.Delay(30);
-                            return ActionResult.Ok(message: "async done", shouldRefresh: false);
-                        }
-                    }.AsAsync()
-                ]
+                Actions = ResolveRegisteredActions([NamespaceId])
             };
         }
     }

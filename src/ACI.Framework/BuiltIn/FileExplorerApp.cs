@@ -1,4 +1,4 @@
-using ACI.Core.Models;
+﻿using ACI.Core.Models;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
 
@@ -23,43 +23,49 @@ public sealed class FileExplorerApp : ContextApp
     {
         RegisterActionNamespace(Name,
         [
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "open_index",
-                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                Description = "Open a directory entry by index.",
+                Params = Param.Object(new()
                 {
-                    ["index"] = "integer"
-                },
-                Description = "Open a directory entry by index."
+                    ["index"] = Param.Integer()
+                }),
+                Handler = HandleOpenIndexAsync
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "open_path",
-                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                Description = "Open a directory by absolute path.",
+                Params = Param.Object(new()
                 {
-                    ["path"] = "string"
-                },
-                Description = "Open a directory by absolute path."
+                    ["path"] = Param.String()
+                }),
+                Handler = HandleOpenPathAsync
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "up",
-                Description = "Go to parent directory."
+                Description = "Go to parent directory.",
+                Handler = HandleUpAsync
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "home",
-                Description = "Go to current user home directory."
+                Description = "Go to current user home directory.",
+                Handler = HandleHomeAsync
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "drives",
-                Description = "Switch to drive list."
+                Description = "Switch to drive list.",
+                Handler = HandleDrivesAsync
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "refresh",
-                Description = "Refresh current listing."
+                Description = "Refresh current listing.",
+                Handler = _ => Task.FromResult(ActionResult.Ok(summary: "Refresh explorer", shouldRefresh: true))
             }
         ]);
 
@@ -103,61 +109,10 @@ public sealed class FileExplorerApp : ContextApp
         {
             Id = WindowId,
             Description = new Text(
-                "File explorer. Tools: file_explorer.open_index(index), file_explorer.open_path(path), file_explorer.up, file_explorer.home, file_explorer.drives, file_explorer.refresh."),
+                "File explorer. Actions: file_explorer.open_index(index), file_explorer.open_path(path), file_explorer.up, file_explorer.home, file_explorer.drives, file_explorer.refresh."),
             Content = new VStack { Children = lines },
             NamespaceRefs = ["file_explorer", "system"],
-            Actions =
-            [
-                new ContextAction
-                {
-                    Id = "open_index",
-                    Label = "Open By Index",
-                    Params = Param.Object(new()
-                    {
-                        ["index"] = Param.Integer()
-                    }),
-                    Handler = HandleOpenIndexAsync
-                },
-
-                new ContextAction
-                {
-                    Id = "open_path",
-                    Label = "Open Path",
-                    Params = Param.Object(new()
-                    {
-                        ["path"] = Param.String()
-                    }),
-                    Handler = HandleOpenPathAsync
-                },
-
-                new ContextAction
-                {
-                    Id = "up",
-                    Label = "Parent Directory",
-                    Handler = HandleUpAsync
-                },
-
-                new ContextAction
-                {
-                    Id = "home",
-                    Label = "User Home",
-                    Handler = HandleHomeAsync
-                },
-
-                new ContextAction
-                {
-                    Id = "drives",
-                    Label = "Drive List",
-                    Handler = HandleDrivesAsync
-                },
-
-                new ContextAction
-                {
-                    Id = "refresh",
-                    Label = "Refresh",
-                    Handler = _ => Task.FromResult(ActionResult.Ok(summary: "Refresh explorer", shouldRefresh: true))
-                }
-            ]
+            Actions = ResolveRegisteredActions(["file_explorer"])
         };
     }
 

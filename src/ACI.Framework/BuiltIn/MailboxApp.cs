@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using ACI.Framework.Components;
@@ -8,8 +8,6 @@ namespace ACI.Framework.BuiltIn;
 
 /// <summary>
 /// 内置的 Agent 间通信应用。
-/// 完全基于 MessageChannel（通用频道原语）构建，底层不知道此应用的存在。
-/// 当 Session 中只有一个 Agent 时不注册此应用。
 /// </summary>
 public class MailboxApp : ContextApp
 {
@@ -29,20 +27,22 @@ public class MailboxApp : ContextApp
     {
         RegisterActionNamespace(Name,
         [
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "send",
-                Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                Description = "Send a message to another agent.",
+                Params = Param.Object(new()
                 {
-                    ["to"] = "string",
-                    ["content"] = "string"
-                },
-                Description = "Send a message to another agent."
+                    ["to"] = Param.String(),
+                    ["content"] = Param.String()
+                }),
+                Handler = HandleSend
             },
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "mark_read",
-                Description = "Mark all mailbox messages as read."
+                Description = "Mark all mailbox messages as read.",
+                Handler = HandleMarkRead
             }
         ]);
 
@@ -86,31 +86,12 @@ public class MailboxApp : ContextApp
             Id = windowId,
             Description = new Text($"""
                 Your communication mailbox. You are agent "{Context.Profile.Id}" ({Context.Profile.Name}).
-                Use mailbox.send / mailbox.mark_read tools to operate this window.
+                Use mailbox.send / mailbox.mark_read actions to operate this window.
                 """),
             Content = RenderInbox(),
             NamespaceRefs = ["mailbox", "system"],
             Options = new WindowOptions { Important = true },
-            Actions =
-            [
-                new ContextAction
-                {
-                    Id = "send",
-                    Label = "Send message to another agent",
-                    Params = Param.Object(new()
-                    {
-                        ["to"] = Param.String(),
-                        ["content"] = Param.String()
-                    }),
-                    Handler = HandleSend
-                },
-                new ContextAction
-                {
-                    Id = "mark_read",
-                    Label = "Mark all messages as read",
-                    Handler = HandleMarkRead
-                }
-            ]
+            Actions = ResolveRegisteredActions(["mailbox"])
         };
     }
 

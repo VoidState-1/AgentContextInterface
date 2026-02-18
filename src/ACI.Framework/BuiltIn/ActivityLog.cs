@@ -1,4 +1,4 @@
-using ACI.Core.Models;
+﻿using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Components;
 using ACI.Framework.Runtime;
@@ -38,16 +38,17 @@ public class ActivityLog : ContextApp
     public override string? AppDescription => "System activity log of actions, launches, and background tasks.";
 
     /// <summary>
-    /// 创建应用时注册事件订阅。
+    /// 创建应用时注册事件订阅与动作命名空间。
     /// </summary>
     public override void OnCreate()
     {
         RegisterActionNamespace(Name,
         [
-            new ActionDescriptor
+            new ContextAction
             {
                 Id = "clear",
-                Description = "Clear generated activity log windows."
+                Description = "Clear generated activity log windows.",
+                Handler = HandleClearAsync
             }
         ]);
 
@@ -228,28 +229,25 @@ public class ActivityLog : ContextApp
                 ]
             },
             NamespaceRefs = ["activity_log", "system"],
-            Actions =
-            [
-                new ContextAction
-                {
-                    Id = "clear",
-                    Label = "Clear Logs",
-                    Handler = _ =>
-                    {
-                        foreach (var log in _logs.ToList())
-                        {
-                            Context.Windows.Remove(log.WindowId);
-                            UnregisterWindow(log.WindowId);
-                        }
-
-                        _logs.Clear();
-                        return Task.FromResult(ActionResult.Ok(
-                            message: "Logs cleared",
-                            shouldRefresh: true));
-                    }
-                }
-            ]
+            Actions = ResolveRegisteredActions(["activity_log"])
         };
+    }
+
+    /// <summary>
+    /// 执行 clear 动作。
+    /// </summary>
+    private Task<ActionResult> HandleClearAsync(ACI.Core.Abstractions.ActionContext _)
+    {
+        foreach (var log in _logs.ToList())
+        {
+            Context.Windows.Remove(log.WindowId);
+            UnregisterWindow(log.WindowId);
+        }
+
+        _logs.Clear();
+        return Task.FromResult(ActionResult.Ok(
+            message: "Logs cleared",
+            shouldRefresh: true));
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ public class ContextActionAndWindowTests
         var original = new ContextAction
         {
             Id = "search",
-            Label = "Search",
+            Description = "Search",
             Params = Param.Object(new Dictionary<string, ActionParamSchema>
             {
                 ["query"] = Param.String()
@@ -26,7 +26,7 @@ public class ContextActionAndWindowTests
 
         Assert.NotSame(original, asyncAction);
         Assert.Equal("search", asyncAction.Id);
-        Assert.Equal("Search", asyncAction.Label);
+        Assert.Equal("Search", asyncAction.Description);
         Assert.Equal(ActionExecutionMode.Async, asyncAction.Mode);
         Assert.Same(original.Params, asyncAction.Params);
     }
@@ -44,7 +44,7 @@ public class ContextActionAndWindowTests
                 new ContextAction
                 {
                     Id = "ping",
-                    Label = "Ping",
+                    Description = "Ping",
                     Handler = _ => Task.FromResult(ActionResult.Ok(message: "pong"))
                 }
             ]
@@ -75,7 +75,7 @@ public class ContextActionAndWindowTests
                 new ContextAction
                 {
                     Id = "known",
-                    Label = "Known",
+                    Description = "Known",
                     Handler = _ => Task.FromResult(ActionResult.Ok())
                 }
             ]
@@ -105,7 +105,7 @@ public class ContextActionAndWindowTests
                 new ContextAction
                 {
                     Id = "echo",
-                    Label = "Echo",
+                    Description = "Echo",
                     Params = Param.Object(new Dictionary<string, ActionParamSchema>
                     {
                         ["name"] = Param.String()

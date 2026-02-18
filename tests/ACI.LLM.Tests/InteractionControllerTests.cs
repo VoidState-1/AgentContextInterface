@@ -180,21 +180,31 @@ public class InteractionControllerTests
         {
             RegisterActionNamespace("demo",
             [
-                new ActionDescriptor
+                new ContextAction
                 {
                     Id = "sync_echo",
-                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Description = "Echo the input text.",
+                    Params = Param.Object(new Dictionary<string, ActionParamSchema>
                     {
-                        ["text"] = "string"
-                    },
-                    Description = "Echo the input text."
+                        ["text"] = Param.String()
+                    }),
+                    Handler = ctx =>
+                    {
+                        var text = ctx.GetString("text");
+                        return Task.FromResult(ActionResult.Ok(
+                            message: text,
+                            summary: $"echo:{text}",
+                            shouldRefresh: false));
+                    }
                 },
-                new ActionDescriptor
+                new ContextAction
                 {
                     Id = "async_job",
-                    Mode = ActionExecutionMode.Async,
-                    Description = "Run an async job."
-                }
+                    Description = "Run an async job.",
+                    Handler = _ => Task.FromResult(ActionResult.Ok(
+                        message: "async done",
+                        shouldRefresh: false))
+                }.AsAsync()
             ]);
         }
 
@@ -209,34 +219,7 @@ public class InteractionControllerTests
                 Description = new Text("Demo window"),
                 Content = new Text("Demo content"),
                 NamespaceRefs = ["demo"],
-                Actions =
-                [
-                    new ContextAction
-                    {
-                        Id = "sync_echo",
-                        Label = "Sync Echo",
-                        Params = Param.Object(new Dictionary<string, ActionParamSchema>
-                        {
-                            ["text"] = Param.String()
-                        }),
-                        Handler = ctx =>
-                        {
-                            var text = ctx.GetString("text");
-                            return Task.FromResult(ActionResult.Ok(
-                                message: text,
-                                summary: $"echo:{text}",
-                                shouldRefresh: false));
-                        }
-                    },
-                    new ContextAction
-                    {
-                        Id = "async_job",
-                        Label = "Async Job",
-                        Handler = _ => Task.FromResult(ActionResult.Ok(
-                            message: "async done",
-                            shouldRefresh: false))
-                    }.AsAsync()
-                ]
+                Actions = ResolveRegisteredActions(["demo"])
             };
         }
     }
