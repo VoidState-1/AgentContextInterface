@@ -61,11 +61,13 @@ try {
     foreach ($project in $selectedProjects) {
         $args = @(
             "test",
-            $project,
             "--nologo",
+            $project,
             "-m:1",
             "-p:BuildInParallel=false",
-            "-p:MSBuildEnableWorkloadResolver=false"
+            "-p:MSBuildEnableWorkloadResolver=false",
+            "-p:RestoreIgnoreFailedSources=true",
+            "-p:NuGetAudit=false"
         )
 
         if ($NoBuild) {

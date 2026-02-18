@@ -1,183 +1,55 @@
-# Server 模块详解（最新版）
+﻿# Server 模块（最新版）
 
-> 对应代码：`src/ACI.Server`
+`ACI.Server` 负责会话容器、HTTP API、实时通知与持久化编排。
 
-## 1. 模块职责
+## 1. 核心职责
 
-Server 是对外入口层，负责：
+- 管理 Session 生命周期（创建、关闭、恢复）
+- 管理 Session 下多个 Agent 的交互入口
+- 暴露 REST API（Session / Agent / Interaction / Window / Persistence）
+- 通过 SignalR 广播窗口变更事件
+- 在会话状态变更后触发自动保存
 
-1. Minimal API 端点
-2. SignalR 实时通知
-3. 会话容器创建与回收
-4. 把请求串行化到单个会话上下文执行
+## 2. 关键对象
 
-## 2. 关键组件
+### 2.1 `SessionManager`
+- 维护活跃 Session 字典
+- 创建/销毁 Session
+- 负责保存、加载、删除快照
+- 绑定窗口事件并转发到 Hub
 
-### 2.1 SessionManager
+### 2.2 `Session`
+- 多 Agent 容器
+- 对外提供：`InteractAsync`、`SimulateAsync`、`ExecuteWindowActionAsync`
+- 内部维护跨 Agent 唤醒队列与消息桥接
 
-接口：
+### 2.3 `AgentContext`
+- 聚合 Core / Framework / LLM 三层能力
+- 承载单 Agent 串行执行锁
+- 负责窗口事件与上下文时间线同步
 
-- `CreateSession(string? sessionId = null)`
-- `GetSession(string sessionId)`
-- `CloseSession(string sessionId)`
-- `GetActiveSessions()`
+## 3. API 分组
 
-实现特征：
+- `SessionEndpoints`：Session 与 Agent 查询接口
+- `InteractionEndpoints`：交互与模拟接口
+- `WindowEndpoints`：窗口查询与 Action 执行
+- `PersistenceEndpoints`：保存/加载/删除快照
 
-- 会话字典：`ConcurrentDictionary<string, SessionContext>`
-- 自动绑定窗口事件到 Hub 通知
+当前端点响应已统一使用明确 DTO（位于 `src/ACI.Server/Dto`），不再依赖匿名对象返回。
 
-### 2.2 SessionContext
+## 4. 实时通知
 
-每个会话持有完整依赖：
+Hub：`/hubs/ACI`
 
-- Core：`Clock/Events/Windows/Context`
-- Framework：`Runtime/Host`
-- LLM：`Interaction`
-- 执行器：`ActionExecutor`
-- 后台任务：`SessionTaskRunner`
-
-关键初始化行为：
-
-1. 读取 `ACIOptions.Render`
-2. 构建 Core + Framework + LLM 组件
-3. 注册内置应用：`launcher`、`activity_log`、`file_explorer`
-4. 启动 `activity_log`
-5. 启动常驻 `launcher`
-
-### 2.3 会话串行执行模型
-
-`SessionContext` 使用 `SemaphoreSlim` 保证同一会话内操作串行化：
-
-- HTTP 端点调用 `RunSerializedAsync(...)`
-- 后台任务回写也通过 `RunSerializedActionAsync(...)` 回到同一串行上下文
-
-## 3. 后台任务接线
-
-`SessionTaskRunner` 负责：
-
-- `Start(windowId, taskBody, taskId, source)`
-- `Cancel(taskId)`
-- 生命周期事件发布（`BackgroundTaskLifecycleEvent`）
-
-状态流：
-
-- `Started`
-- `Completed`
-- `Failed`
-- `Canceled`
-
-## 4. HTTP 端点分组
-
-### 4.1 Sessions
-
-前缀：`/api/sessions`
-
-- `GET /`：会话列表
-- `POST /`：创建会话
-- `GET /{sessionId}`：会话详情
-- `GET /{sessionId}/context?includeObsolete={bool}`：上下文时间线（结构化）
-- `GET /{sessionId}/context/raw?includeObsolete={bool}`：上下文原始文本
-- `GET /{sessionId}/llm-input/raw`：当前发给 LLM 的消息快照文本
-- `GET /{sessionId}/apps`：可用应用列表
-- `DELETE /{sessionId}`：关闭会话
-
-### 4.2 Interaction
-
-前缀：`/api/sessions/{sessionId}/interact`
-
-- `POST /`：标准交互（用户消息）
-- `POST /simulate`：手动注入 assistant 输出（调试）
-
-### 4.3 Windows
-
-前缀：`/api/sessions/{sessionId}/windows`
-
-- `GET /`：窗口列表
-- `GET /{windowId}`：窗口详情
-- `POST /{windowId}/actions/{actionId}`：直接执行窗口 action
-
-## 5. DTO（当前）
-
-关键类型：
-
-- `MessageRequest`
-- `SimulateRequest`
-- `InteractionResponse`
-- `InteractionStepInfo`
-- `ActionRequest`
-
-`InteractionResponse` 新增 `Steps`，用于回传每个 tool_call 的执行轨迹。
-
-## 6. SignalR
-
-Hub 路径：`/hubs/ACI`
-
-客户端方法：
-
-- `JoinSession(sessionId)`
-- `LeaveSession(sessionId)`
-
-推送事件：
-
+事件：
 - `WindowCreated`
 - `WindowUpdated`
 - `WindowClosed`
-- `JoinedSession`
-- `LeftSession`
-- `Error`
 
-## 7. Program.cs 注册（当前）
+## 5. 配置入口
 
-- CORS（`AllowAnyOrigin/Method/Header`）
-- SignalR
-- `OpenRouterConfig` + `ACIOptions`
-- `HttpClient<ILLMBridge, OpenRouterClient>`
-- `ISessionManager`（Singleton）
-- `IACIHubNotifier`（Singleton）
-- Swagger（开发环境）
+`appsettings.json` -> `ACI` 节点：
+- `Render`（上下文渲染与裁剪参数）
+- `Persistence`（存储路径与自动保存）
 
-## 8. 配置项（appsettings.json）
-
-`ACI.Render`：
-
-- `MaxTokens`
-- `MinConversationTokens`
-- `PruneTargetTokens`
-
-`ACI.Context`：
-
-- `MaxItems`（当前保留字段，尚未接入裁剪逻辑）
-
-`OpenRouter`：
-
-- `BaseUrl`
-- `ApiKey`
-- `DefaultModel`
-- `FallbackModels`
-- `MaxTokens`
-- `Temperature`
-- `TimeoutSeconds`
-- `MaxRetries`
-
-## 9. 目录结构
-
-```text
-ACI.Server/
-  Endpoints/
-    InteractionEndpoints.cs
-    SessionEndpoints.cs
-    WindowEndpoints.cs
-  Hubs/
-    ACIHub.cs
-  Services/
-    SessionContext.cs
-    SessionManager.cs
-    SessionTaskRunner.cs
-  Settings/
-    ACIOptions.cs
-  Dto/
-    ApiModels.cs
-  Program.cs
-  appsettings.json
-```
+OpenRouter 配置通过 `OpenRouter` 节点注入。
