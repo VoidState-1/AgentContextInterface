@@ -1,11 +1,11 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
 
 namespace ACI.LLM.Services;
 
 /// <summary>
-/// 解析后的工具调用结果。
+/// 解析后的 Action 调用结果。
 /// </summary>
 public sealed class ResolvedActionCall
 {
@@ -20,17 +20,17 @@ public sealed class ResolvedActionCall
     public required string NamespaceId { get; init; }
 
     /// <summary>
-    /// 工具 ID。
+    /// Action ID。
     /// </summary>
     public required string ActionId { get; init; }
 
     /// <summary>
-    /// 完整工具 ID（namespace.action）。
+    /// 完整 Action ID（namespace.action）。
     /// </summary>
     public string QualifiedActionId => $"{NamespaceId}.{ActionId}";
 
     /// <summary>
-    /// 工具执行模式。
+    /// Action 执行模式。
     /// </summary>
     public required ActionExecutionMode Mode { get; init; }
 
@@ -41,7 +41,7 @@ public sealed class ResolvedActionCall
 }
 
 /// <summary>
-/// 工具调用解析结果。
+/// Action 调用解析结果。
 /// </summary>
 public sealed class ActionCallResolution
 {
@@ -74,12 +74,12 @@ public sealed class ActionCallResolution
 }
 
 /// <summary>
-/// 工具调用名称解析器。
+/// Action 调用名称解析器。
 /// </summary>
 public static class ActionCallResolver
 {
     /// <summary>
-    /// 根据窗口可见命名空间解析工具调用。
+    /// 根据窗口可见命名空间解析 Action 调用。
     /// </summary>
     public static ActionCallResolution Resolve(
         ParsedAction action,
@@ -123,7 +123,7 @@ public static class ActionCallResolver
         IReadOnlyList<string> visibleNamespaces,
         IActionNamespaceRegistry registry,
         string namespaceId,
-        string toolId)
+        string actionId)
     {
         if (!visibleNamespaces.Contains(namespaceId, StringComparer.OrdinalIgnoreCase))
         {
@@ -131,36 +131,36 @@ public static class ActionCallResolver
                 $"Action namespace '{namespaceId}' is not visible for window '{action.WindowId}'");
         }
 
-        if (!registry.TryGetAction(namespaceId, toolId, out var tool) || tool == null)
+        if (!registry.TryGetAction(namespaceId, actionId, out var resolvedAction) || resolvedAction == null)
         {
-            return ActionCallResolution.Fail($"Action '{namespaceId}.{toolId}' does not exist");
+            return ActionCallResolution.Fail($"Action '{namespaceId}.{actionId}' does not exist");
         }
 
         return ActionCallResolution.Ok(new ResolvedActionCall
         {
             WindowId = action.WindowId,
             NamespaceId = namespaceId,
-            ActionId = toolId,
-            Mode = tool.Mode,
+            ActionId = actionId,
+            Mode = resolvedAction.Mode,
             Parameters = action.Parameters
         });
     }
 
     /// <summary>
-    /// 解析短工具名。
+    /// 解析短 Action 名。
     /// </summary>
     private static ActionCallResolution ResolveShort(
         ParsedAction action,
         IReadOnlyList<string> visibleNamespaces,
         IActionNamespaceRegistry registry)
     {
-        var matches = new List<(string NamespaceId, ActionDescriptor Tool)>();
+        var matches = new List<(string NamespaceId, ActionDescriptor Action)>();
 
         foreach (var ns in visibleNamespaces)
         {
-            if (registry.TryGetAction(ns, action.ActionId, out var tool) && tool != null)
+            if (registry.TryGetAction(ns, action.ActionId, out var resolvedAction) && resolvedAction != null)
             {
-                matches.Add((ns, tool));
+                matches.Add((ns, resolvedAction));
             }
         }
 
@@ -173,7 +173,7 @@ public static class ActionCallResolver
         {
             var candidates = string.Join(
                 ", ",
-                matches.Select(m => $"{m.NamespaceId}.{m.Tool.Id}").OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
+                matches.Select(m => $"{m.NamespaceId}.{m.Action.Id}").OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
 
             return ActionCallResolution.Fail(
                 $"Ambiguous action id '{action.ActionId}'. Candidates: {candidates}");
@@ -184,14 +184,14 @@ public static class ActionCallResolver
         {
             WindowId = action.WindowId,
             NamespaceId = matched.NamespaceId,
-            ActionId = matched.Tool.Id,
-            Mode = matched.Tool.Mode,
+            ActionId = matched.Action.Id,
+            Mode = matched.Action.Mode,
             Parameters = action.Parameters
         });
     }
 
     /// <summary>
-    /// 拆分完整工具名。
+    /// 拆分完整 Action 名。
     /// </summary>
     private static (string NamespaceId, string ActionId)? SplitQualifiedActionId(string actionId)
     {
@@ -202,12 +202,12 @@ public static class ActionCallResolver
         }
 
         var namespaceId = actionId[..dotIndex].Trim();
-        var toolId = actionId[(dotIndex + 1)..].Trim();
-        if (string.IsNullOrWhiteSpace(namespaceId) || string.IsNullOrWhiteSpace(toolId))
+        var pureActionId = actionId[(dotIndex + 1)..].Trim();
+        if (string.IsNullOrWhiteSpace(namespaceId) || string.IsNullOrWhiteSpace(pureActionId))
         {
             return null;
         }
 
-        return (namespaceId, toolId);
+        return (namespaceId, pureActionId);
     }
 }

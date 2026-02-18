@@ -1,11 +1,11 @@
-using ACI.Core.Abstractions;
+﻿using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using System.Text.Json;
 
 namespace ACI.Core.Services;
 
 /// <summary>
-/// 执行窗口动作并发布执行事件。
+/// 执行窗口 Action 并发布执行事件。
 /// </summary>
 public class ActionExecutor : IActionExecutor
 {
@@ -15,6 +15,7 @@ public class ActionExecutor : IActionExecutor
     private readonly IWindowManager _windows;
     private readonly ISeqClock _clock;
     private readonly IEventBus _events;
+    private readonly ReservedActionDispatcher _reservedActionDispatcher;
 
     /// <summary>
     /// 可选的窗口刷新回调。
@@ -28,16 +29,18 @@ public class ActionExecutor : IActionExecutor
         IWindowManager windows,
         ISeqClock clock,
         IEventBus events,
-        Action<string>? refreshWindow = null)
+        Action<string>? refreshWindow = null,
+        ReservedActionDispatcher? reservedActionDispatcher = null)
     {
         _windows = windows;
         _clock = clock;
         _events = events;
         _refreshWindow = refreshWindow;
+        _reservedActionDispatcher = reservedActionDispatcher ?? new ReservedActionDispatcher();
     }
 
     /// <summary>
-    /// 在指定窗口执行一个动作。
+    /// 在指定窗口执行一个 Action。
     /// </summary>
     public async Task<ActionResult> ExecuteAsync(
         string windowId,
@@ -53,35 +56,20 @@ public class ActionExecutor : IActionExecutor
             return ActionResult.Fail($"Window '{windowId}' does not exist");
         }
 
-        // 2. 处理系统保留动作 close。
-        if (string.Equals(effectiveActionId, "close", StringComparison.OrdinalIgnoreCase))
+        // 2. 保留 Action（如 close）由专门分发器处理。
+        if (_reservedActionDispatcher.TryDispatch(window, effectiveActionId, parameters, out var reservedResult))
         {
-            if (!window.Options.Closable)
+            if (!reservedResult.Success)
             {
-                return ActionResult.Fail($"Window '{windowId}' cannot be closed");
+                return reservedResult;
             }
 
-            var seq = _clock.Next();
-            var summary = TryGetSummary(parameters);
-
-            _windows.Remove(windowId);
-
-            var closeResult = ActionResult.Close(summary);
-            closeResult.LogSeq = seq;
-
-            _events.Publish(new ActionExecutedEvent(
-                Seq: seq,
-                WindowId: windowId,
-                ActionId: actionId,
-                Success: true,
-                Summary: summary
-            ));
-
-            return closeResult;
+            var reservedSeq = _clock.Next();
+            return FinalizeExecution(window, actionId, reservedResult, reservedSeq);
         }
 
-        // 3. 通过窗口处理器执行业务动作。
-        var seq2 = _clock.Next();
+        // 3. 执行窗口业务处理器。
+        var seq = _clock.Next();
         ActionResult result;
 
         if (window.Handler == null)
@@ -107,54 +95,42 @@ public class ActionExecutor : IActionExecutor
             }
         }
 
-        result.LogSeq = seq2;
+        // 4. 统一发布事件并执行窗口后处理。
+        return FinalizeExecution(window, actionId, result, seq);
+    }
+
+    /// <summary>
+    /// 统一处理执行结果落盘：记录 seq、发布事件、处理关闭与刷新。
+    /// </summary>
+    private ActionResult FinalizeExecution(Window window, string actionId, ActionResult result, int seq)
+    {
+        result.LogSeq = seq;
 
         _events.Publish(new ActionExecutedEvent(
-            Seq: seq2,
-            WindowId: windowId,
+            Seq: seq,
+            WindowId: window.Id,
             ActionId: actionId,
             Success: result.Success,
             Summary: result.Summary
         ));
 
-        // 4. 按动作结果执行关闭或刷新。
         if (result.ShouldClose || window.Options.AutoCloseOnAction)
         {
-            _windows.Remove(windowId);
+            _windows.Remove(window.Id);
         }
         else if (result.ShouldRefresh)
         {
             if (_refreshWindow != null)
             {
-                _refreshWindow(windowId);
+                _refreshWindow(window.Id);
             }
             else if (_windows is WindowManager wm)
             {
-                wm.NotifyUpdated(windowId);
+                wm.NotifyUpdated(window.Id);
             }
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// 从参数中提取可选摘要。
-    /// </summary>
-    private static string? TryGetSummary(JsonElement? parameters)
-    {
-        if (!parameters.HasValue || parameters.Value.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        if (!parameters.Value.TryGetProperty("summary", out var summaryElement))
-        {
-            return null;
-        }
-
-        return summaryElement.ValueKind == JsonValueKind.String
-            ? summaryElement.GetString()
-            : summaryElement.ToString();
     }
 
     /// <summary>
