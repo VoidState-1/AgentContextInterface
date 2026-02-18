@@ -1,3 +1,4 @@
+﻿using ACI.Server.Dto;
 using ACI.Server.Services;
 using System.Text.Json;
 
@@ -21,50 +22,35 @@ public static class WindowEndpoints
             var agent = ResolveAgent(sessionManager, sessionId, agentId);
             if (agent == null)
             {
-                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Agent not found: {agentId}" });
             }
 
             var windows = agent.Windows.GetAll()
-                .Select(w => new
-                {
-                    w.Id,
-                    Description = w.Description?.Render(),
-                    Content = w.Render(),
-                    Namespaces = w.NamespaceRefs,
-                    w.AppName,
-                    w.Meta.CreatedAt,
-                    w.Meta.UpdatedAt
-                });
+                .Select(ApiResponseMapper.ToWindowSummary)
+                .ToList();
 
             return Results.Ok(windows);
         });
 
         group.MapGet("/{windowId}", (
-            string sessionId, string agentId, string windowId,
+            string sessionId,
+            string agentId,
+            string windowId,
             ISessionManager sessionManager) =>
         {
             var agent = ResolveAgent(sessionManager, sessionId, agentId);
             if (agent == null)
             {
-                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Agent not found: {agentId}" });
             }
 
             var window = agent.Windows.Get(windowId);
             if (window == null)
             {
-                return Results.NotFound(new { Error = $"Window not found: {windowId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Window not found: {windowId}" });
             }
 
-            return Results.Ok(new
-            {
-                window.Id,
-                Description = window.Description?.Render(),
-                Content = window.Render(),
-                Namespaces = window.NamespaceRefs,
-                window.AppName,
-                window.Meta.CreatedAt,
-                window.Meta.UpdatedAt
-            });
+            return Results.Ok(ApiResponseMapper.ToWindowSummary(window));
         });
 
         group.MapPost("/{windowId}/actions/{actionId}", async (
@@ -79,12 +65,12 @@ public static class WindowEndpoints
             var session = sessionManager.GetSession(sessionId);
             if (session == null)
             {
-                return Results.NotFound(new { Error = $"Session not found: {sessionId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Session not found: {sessionId}" });
             }
 
             if (session.GetAgent(agentId) == null)
             {
-                return Results.NotFound(new { Error = $"Agent not found: {agentId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Agent not found: {agentId}" });
             }
 
             var result = await session.ExecuteWindowActionAsync(
@@ -94,11 +80,11 @@ public static class WindowEndpoints
                 request?.Params,
                 ct);
 
-            return Results.Ok(new
+            return Results.Ok(new WindowActionInvokeResponse
             {
-                result.Success,
-                result.Message,
-                result.Summary
+                Success = result.Success,
+                Message = result.Message,
+                Summary = result.Summary
             });
         });
     }
@@ -107,7 +93,9 @@ public static class WindowEndpoints
     /// 解析 Agent。
     /// </summary>
     private static AgentContext? ResolveAgent(
-        ISessionManager sessionManager, string sessionId, string agentId)
+        ISessionManager sessionManager,
+        string sessionId,
+        string agentId)
     {
         var session = sessionManager.GetSession(sessionId);
         return session?.GetAgent(agentId);
@@ -115,12 +103,12 @@ public static class WindowEndpoints
 }
 
 /// <summary>
-/// 动作请求。
+/// 窗口 Action 请求。
 /// </summary>
 public class ActionRequest
 {
     /// <summary>
-    /// 工具参数。
+    /// Action 参数。
     /// </summary>
     public JsonElement? Params { get; set; }
 }

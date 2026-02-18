@@ -5,6 +5,7 @@ using ACI.Server.Endpoints;
 using ACI.Server.Hubs;
 using ACI.Server.Services;
 using ACI.Server.Settings;
+using ACI.Server.Dto;
 using ACI.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -100,7 +101,11 @@ app.MapWindowEndpoints();
 app.MapHub<ACIHub>("/hubs/ACI");
 
 // 健康检查
-app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Time = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new HealthResponse
+{
+    Status = "Healthy",
+    Time = DateTime.UtcNow
+}));
 
 // ========== 启动 ==========
 

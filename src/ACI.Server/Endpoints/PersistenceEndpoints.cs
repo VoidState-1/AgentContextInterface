@@ -1,12 +1,16 @@
+﻿using ACI.Server.Dto;
 using ACI.Server.Services;
 
 namespace ACI.Server.Endpoints;
 
 /// <summary>
-/// Session persistence endpoints.
+/// Session 持久化相关端点。
 /// </summary>
 public static class PersistenceEndpoints
 {
+    /// <summary>
+    /// 注册持久化 API。
+    /// </summary>
     public static void MapPersistenceEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/sessions")
@@ -20,10 +24,10 @@ public static class PersistenceEndpoints
             var saved = await sessionManager.SaveSessionAsync(sessionId, ct);
             if (!saved)
             {
-                return Results.NotFound(new { Error = $"Session not found: {sessionId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Session not found: {sessionId}" });
             }
 
-            return Results.Ok(new
+            return Results.Ok(new SaveSessionResponse
             {
                 SessionId = sessionId,
                 Saved = true,
@@ -43,26 +47,15 @@ public static class PersistenceEndpoints
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { Error = ex.Message });
+                return Results.BadRequest(new ErrorResponse { Error = ex.Message });
             }
 
             if (session == null)
             {
-                return Results.NotFound(new { Error = $"Saved session not found: {sessionId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Saved session not found: {sessionId}" });
             }
 
-            return Results.Ok(new
-            {
-                session.SessionId,
-                session.CreatedAt,
-                AgentCount = session.AgentCount,
-                Agents = session.GetAllAgents().Select(a => new
-                {
-                    a.AgentId,
-                    a.Profile.Name,
-                    a.Profile.Role
-                })
-            });
+            return Results.Ok(ApiResponseMapper.ToSessionSummary(session));
         });
 
         group.MapGet("/saved", async (
@@ -81,7 +74,7 @@ public static class PersistenceEndpoints
             var deleted = await sessionManager.DeleteSavedSessionAsync(sessionId, ct);
             if (!deleted)
             {
-                return Results.NotFound(new { Error = $"Saved session not found: {sessionId}" });
+                return Results.NotFound(new ErrorResponse { Error = $"Saved session not found: {sessionId}" });
             }
 
             return Results.NoContent();
