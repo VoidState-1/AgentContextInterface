@@ -228,8 +228,7 @@ public class ActivityLog : ContextApp
                     new Text("Log entries are emitted as compact windows in context.")
                 ]
             },
-            NamespaceRefs = ["activity_log", "system"],
-            Actions = ResolveRegisteredActions(["activity_log"])
+            NamespaceRefs = ["activity_log", "system"]
         };
     }
 

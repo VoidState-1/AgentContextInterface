@@ -90,8 +90,7 @@ public class MailboxApp : ContextApp
                 """),
             Content = RenderInbox(),
             NamespaceRefs = ["mailbox", "system"],
-            Options = new WindowOptions { Important = true },
-            Actions = ResolveRegisteredActions(["mailbox"])
+            Options = new WindowOptions { Important = true }
         };
     }
 

@@ -62,8 +62,7 @@ public class AppLauncher : ContextApp
                 // 启动器常驻且不可关闭，同时在 prompt 裁剪中固定保留。
                 Closable = false,
                 PinInPrompt = true
-            },
-            Actions = ResolveRegisteredActions(["launcher"])
+            }
         };
     }
 

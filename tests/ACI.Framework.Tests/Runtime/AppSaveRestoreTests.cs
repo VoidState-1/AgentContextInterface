@@ -187,16 +187,7 @@ public class AppSaveRestoreTests
             return new ContextWindow
             {
                 Id = windowId,
-                Content = new Text($"Counter: {Counter}, Labels: {string.Join(",", Labels)}"),
-                Actions =
-                [
-                    new ContextAction
-                    {
-                        Id = "noop",
-                        Description = "Do Nothing",
-                        Handler = _ => Task.FromResult(ActionResult.Ok())
-                    }
-                ]
+                Content = new Text($"Counter: {Counter}, Labels: {string.Join(",", Labels)}")
             };
         }
     }

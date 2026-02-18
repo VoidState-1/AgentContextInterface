@@ -189,8 +189,7 @@ public class SessionEndToEndTests
                 Id = WindowId,
                 Description = new Text("E2E App"),
                 Content = new Text("E2E content"),
-                NamespaceRefs = [NamespaceId, "system"],
-                Actions = ResolveRegisteredActions([NamespaceId])
+                NamespaceRefs = [NamespaceId, "system"]
             };
         }
     }

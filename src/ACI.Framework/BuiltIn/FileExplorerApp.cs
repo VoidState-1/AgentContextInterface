@@ -111,8 +111,7 @@ public sealed class FileExplorerApp : ContextApp
             Description = new Text(
                 "File explorer. Actions: file_explorer.open_index(index), file_explorer.open_path(path), file_explorer.up, file_explorer.home, file_explorer.drives, file_explorer.refresh."),
             Content = new VStack { Children = lines },
-            NamespaceRefs = ["file_explorer", "system"],
-            Actions = ResolveRegisteredActions(["file_explorer"])
+            NamespaceRefs = ["file_explorer", "system"]
         };
     }
 

@@ -109,6 +109,7 @@ public class FrameworkHost
         var definition = app.CreateWindow(intent);
         var window = definition.ToWindow();
         window.AppName = appName;
+        AttachWindowActionHandler(window, app);
 
         // 设置 seq
         var seq = _clock.Next();
@@ -162,7 +163,7 @@ public class FrameworkHost
         window.Meta.UpdatedAt = _clock.Next();
 
         // 更新 Handler
-        window.Handler = new ContextActionHandler(newDefinition.Actions);
+        AttachWindowActionHandler(window, app);
 
         if (_windows is WindowManager wm)
         {
@@ -210,6 +211,12 @@ public class FrameworkHost
         app.Initialize(_appStates[appName], _context);
         app.OnCreate();
         _startedApps.Add(appName);
+    }
+
+    private static void AttachWindowActionHandler(Window window, ContextApp app)
+    {
+        var actions = app.ResolveActionsForNamespaces(window.NamespaceRefs);
+        window.Handler = actions.Count == 0 ? null : new ContextActionHandler(actions);
     }
 
     // ========== 快照支持 ==========

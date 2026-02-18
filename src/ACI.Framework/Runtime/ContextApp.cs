@@ -174,9 +174,9 @@ public abstract class ContextApp
     }
 
     /// <summary>
-    /// 按窗口可见命名空间收集 Action 执行定义。
+    /// 按窗口可见命名空间收集 Action 执行定义（供 FrameworkHost 绑定窗口处理器）。
     /// </summary>
-    protected List<ContextAction> ResolveRegisteredActions(IEnumerable<string> namespaceRefs)
+    internal List<ContextAction> ResolveActionsForNamespaces(IEnumerable<string> namespaceRefs)
     {
         var resolved = new List<ContextAction>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

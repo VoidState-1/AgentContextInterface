@@ -224,16 +224,7 @@ public class FrameworkHostTests
             {
                 Id = windowId,
                 Description = new Text($"intent:{intent ?? "none"}"),
-                Content = new Text($"version:{version}"),
-                Actions =
-                [
-                    new ContextAction
-                    {
-                        Id = $"run_v{version}",
-                        Description = "Run",
-                        Handler = _ => Task.FromResult(ActionResult.Ok())
-                    }
-                ]
+                Content = new Text($"version:{version}")
             };
         }
     }

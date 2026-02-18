@@ -1,4 +1,4 @@
-using ACI.Core.Abstractions;
+﻿using ACI.Core.Abstractions;
 using ACI.Core.Models;
 using ACI.Core.Services;
 using ACI.Framework.Components;
@@ -26,14 +26,9 @@ public class ContextWindow
     public required IComponent Content { get; init; }
 
     /// <summary>
-    /// 窗口引用的命名空间。
+    /// 窗口引用的 Action 命名空间。
     /// </summary>
     public List<string> NamespaceRefs { get; init; } = [];
-
-    /// <summary>
-    /// 旧动作定义（迁移期保留，后续会迁移到命名空间体系）。
-    /// </summary>
-    public List<ContextAction> Actions { get; init; } = [];
 
     /// <summary>
     /// 窗口配置。
@@ -52,7 +47,7 @@ public class ContextWindow
             Content = Content,
             NamespaceRefs = NamespaceRefs.ToList(),
             Options = Options,
-            Handler = new ContextActionHandler(Actions)
+            Handler = null
         };
     }
 }

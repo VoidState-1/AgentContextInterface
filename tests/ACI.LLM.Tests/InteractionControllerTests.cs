@@ -218,8 +218,7 @@ public class InteractionControllerTests
                 Id = windowId,
                 Description = new Text("Demo window"),
                 Content = new Text("Demo content"),
-                NamespaceRefs = ["demo"],
-                Actions = ResolveRegisteredActions(["demo"])
+                NamespaceRefs = ["demo"]
             };
         }
     }
