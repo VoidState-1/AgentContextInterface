@@ -17,6 +17,7 @@ public static class WindowEndpoints
         var group = app.MapGroup("/api/sessions/{sessionId}/agents/{agentId}/windows")
             .WithTags("Windows");
 
+        // 获取当前 Agent 的窗口列表（含渲染内容与命名空间引用）。
         group.MapGet("/", (string sessionId, string agentId, ISessionManager sessionManager) =>
         {
             var agent = ResolveAgent(sessionManager, sessionId, agentId);
@@ -32,6 +33,7 @@ public static class WindowEndpoints
             return Results.Ok(windows);
         });
 
+        // 获取单个窗口详情。
         group.MapGet("/{windowId}", (
             string sessionId,
             string agentId,
@@ -53,6 +55,7 @@ public static class WindowEndpoints
             return Results.Ok(ApiResponseMapper.ToWindowSummary(window));
         });
 
+        // 直接执行指定窗口 Action（调试和手动调用入口）。
         group.MapPost("/{windowId}/actions/{actionId}", async (
             string sessionId,
             string agentId,

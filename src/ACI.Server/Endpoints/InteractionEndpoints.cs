@@ -16,6 +16,7 @@ public static class InteractionEndpoints
         var group = app.MapGroup("/api/sessions/{sessionId}/agents/{agentId}/interact")
             .WithTags("Interaction");
 
+        // 处理用户消息主入口：触发 LLM 交互与自动 action 循环。
         group.MapPost("/", async (
             string sessionId,
             string agentId,
@@ -46,6 +47,7 @@ public static class InteractionEndpoints
                 : ToFailedResponse(result));
         });
 
+        // 注入模拟 assistant 输出（调试专用，不调用模型）。
         group.MapPost("/simulate", async (
             string sessionId,
             string agentId,

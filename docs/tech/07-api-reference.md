@@ -31,15 +31,11 @@
 - `GET /api/sessions/{sessionId}/agents/{agentId}/context?includeObsolete=true|false`
 - 响应：`ContextTimelineItemResponse[]`
 
-### 2.3 查询原始上下文
-- `GET /api/sessions/{sessionId}/agents/{agentId}/context/raw?includeObsolete=true|false`
-- 响应：`text/plain`
-
-### 2.4 查询原始 LLM 输入
+### 2.3 查询原始 LLM 输入
 - `GET /api/sessions/{sessionId}/agents/{agentId}/llm-input/raw`
 - 响应：`text/plain`
 
-### 2.5 查询可用应用
+### 2.4 查询可用应用
 - `GET /api/sessions/{sessionId}/agents/{agentId}/apps`
 - 响应：`AppSummaryResponse[]`
 

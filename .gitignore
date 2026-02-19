@@ -73,6 +73,8 @@ ehthumbs.db
 *.tmp
 *.temp
 *.log
+.tmp_test_obj/
+.tmp_test_out/
 
 # tempdoc
 TODO/

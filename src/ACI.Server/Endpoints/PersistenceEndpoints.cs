@@ -16,6 +16,7 @@ public static class PersistenceEndpoints
         var group = app.MapGroup("/api/sessions")
             .WithTags("Persistence");
 
+        // 将指定会话写入持久化存储。
         group.MapPost("/{sessionId}/save", async (
             string sessionId,
             ISessionManager sessionManager,
@@ -35,6 +36,7 @@ public static class PersistenceEndpoints
             });
         });
 
+        // 从持久化存储加载指定会话并挂载到运行时。
         group.MapPost("/{sessionId}/load", async (
             string sessionId,
             ISessionManager sessionManager,
@@ -58,6 +60,7 @@ public static class PersistenceEndpoints
             return Results.Ok(ApiResponseMapper.ToSessionSummary(session));
         });
 
+        // 列出磁盘中已保存的会话快照。
         group.MapGet("/saved", async (
             ISessionManager sessionManager,
             CancellationToken ct) =>
@@ -66,6 +69,7 @@ public static class PersistenceEndpoints
             return Results.Ok(sessions);
         });
 
+        // 删除指定会话快照文件。
         group.MapDelete("/saved/{sessionId}", async (
             string sessionId,
             ISessionManager sessionManager,

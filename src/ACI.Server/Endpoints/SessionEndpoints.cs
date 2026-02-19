@@ -1,6 +1,4 @@
-﻿using System.Text;
-using ACI.Core.Models;
-using ACI.Server.Dto;
+﻿using ACI.Server.Dto;
 using ACI.Server.Services;
 
 namespace ACI.Server.Endpoints;
@@ -18,6 +16,7 @@ public static class SessionEndpoints
         var sessions = app.MapGroup("/api/sessions")
             .WithTags("Sessions");
 
+        // 列出当前内存中的活跃会话（用于前端会话导航）。
         sessions.MapGet("/", (ISessionManager sessionManager) =>
         {
             var list = sessionManager.GetActiveSessions()
@@ -29,6 +28,7 @@ public static class SessionEndpoints
             return Results.Ok(list);
         });
 
+        // 创建新会话，可选携带多 Agent 配置。
         sessions.MapPost("/", (CreateSessionRequest? request, ISessionManager sessionManager) =>
         {
             try
@@ -42,6 +42,7 @@ public static class SessionEndpoints
             }
         });
 
+        // 获取单个会话的摘要信息（元数据，不包含上下文正文）。
         sessions.MapGet("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
         {
             var session = sessionManager.GetSession(sessionId);
@@ -53,6 +54,7 @@ public static class SessionEndpoints
             return Results.Ok(ApiResponseMapper.ToSessionSummary(session));
         });
 
+        // 关闭并释放会话资源。
         sessions.MapDelete("/{sessionId}", (string sessionId, ISessionManager sessionManager) =>
         {
             var session = sessionManager.GetSession(sessionId);
@@ -68,6 +70,7 @@ public static class SessionEndpoints
         var agents = app.MapGroup("/api/sessions/{sessionId}/agents")
             .WithTags("Agents");
 
+        // 列出会话下所有 Agent 的摘要信息。
         agents.MapGet("/", (string sessionId, ISessionManager sessionManager) =>
         {
             var session = sessionManager.GetSession(sessionId);
@@ -83,6 +86,7 @@ public static class SessionEndpoints
             return Results.Ok(agentsList);
         });
 
+        // 获取结构化上下文时间线（调试/分析用）。
         agents.MapGet("/{agentId}/context", (
             string sessionId,
             string agentId,
@@ -106,44 +110,7 @@ public static class SessionEndpoints
             return Results.Ok(timeline);
         });
 
-        agents.MapGet("/{agentId}/context/raw", (
-            string sessionId,
-            string agentId,
-            bool includeObsolete,
-            ISessionManager sessionManager) =>
-        {
-            var agent = ResolveAgent(sessionManager, sessionId, agentId);
-            if (agent == null)
-            {
-                return Results.NotFound(new ErrorResponse { Error = $"Agent not found: {agentId}" });
-            }
-
-            var items = includeObsolete
-                ? agent.Context.GetArchive()
-                : agent.Context.GetActive();
-
-            var sb = new StringBuilder();
-            foreach (var item in items)
-            {
-                if (item.Type == ContextItemType.Window)
-                {
-                    var window = agent.Windows.Get(item.Content);
-                    if (window != null)
-                    {
-                        sb.AppendLine(window.Render());
-                    }
-                }
-                else
-                {
-                    sb.AppendLine(item.Content);
-                }
-
-                sb.AppendLine();
-            }
-
-            return Results.Text(sb.ToString().TrimEnd(), "text/plain; charset=utf-8");
-        });
-
+        // 获取当前轮发送给 LLM 的最终输入文本（用于定位模型行为）。
         agents.MapGet("/{agentId}/llm-input/raw", (
             string sessionId,
             string agentId,
@@ -159,6 +126,7 @@ public static class SessionEndpoints
             return Results.Text(raw, "text/plain; charset=utf-8");
         });
 
+        // 列出当前 Agent 可用应用及启动状态。
         agents.MapGet("/{agentId}/apps", (
             string sessionId,
             string agentId,
