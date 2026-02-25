@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using ACI.Core.Abstractions;
 using ACI.Core.Models;
 
@@ -72,31 +72,24 @@ public class ContextRenderer : IContextRenderer
     {
         _ = options;
         var messages = new List<LlmMessage>();
+        var renderedNamespaceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 1. 计算当前活跃窗口引用到的命名空间消息（去重）。
-        var namespaceMessages = BuildNamespaceMessages(items, windowManager, actionNamespaces);
-        var namespacesInjected = namespaceMessages.Count == 0;
-
-        // 2. 按上下文顺序渲染，首次遇到窗口前注入命名空间定义。
+        // 1. 按上下文顺序渲染每个条目。
+        // 2. 如果当前是窗口条目，则在当前末尾补上首次出现的 namespace 定义。
         foreach (var item in items)
         {
-            if (item.Type == ContextItemType.Window && !namespacesInjected)
-            {
-                messages.AddRange(namespaceMessages);
-                namespacesInjected = true;
-            }
-
             var message = RenderItem(item, windowManager);
             if (message != null)
             {
                 messages.Add(message);
             }
-        }
 
-        // 3. 兜底：若没有窗口消息但仍有命名空间定义，则追加在末尾。
-        if (!namespacesInjected)
-        {
-            messages.AddRange(namespaceMessages);
+            AppendNamespaceMessagesForWindow(
+                messages,
+                item,
+                windowManager,
+                actionNamespaces,
+                renderedNamespaceIds);
         }
 
         return messages;
@@ -105,7 +98,7 @@ public class ContextRenderer : IContextRenderer
     /// <summary>
     /// 渲染单个上下文项。
     /// </summary>
-    private LlmMessage? RenderItem(ContextItem item, IWindowManager windowManager)
+    private static LlmMessage? RenderItem(ContextItem item, IWindowManager windowManager)
     {
         return item.Type switch
         {
@@ -130,7 +123,7 @@ public class ContextRenderer : IContextRenderer
     }
 
     /// <summary>
-    /// 渲染窗口项（从 WindowManager 取最新窗口内容）。
+    /// 渲染窗口项（从 WindowManager 读取最新窗口内容）。
     /// </summary>
     private static LlmMessage? RenderWindowItem(ContextItem item, IWindowManager windowManager)
     {
@@ -150,48 +143,46 @@ public class ContextRenderer : IContextRenderer
     }
 
     /// <summary>
-    /// 构建当前渲染周期需要注入的命名空间消息。
+    /// 按窗口引用在当前末尾追加首次出现的命名空间定义。
     /// </summary>
-    private static List<LlmMessage> BuildNamespaceMessages(
-        IReadOnlyList<ContextItem> items,
+    private static void AppendNamespaceMessagesForWindow(
+        ICollection<LlmMessage> messages,
+        ContextItem item,
         IWindowManager windowManager,
-        IActionNamespaceRegistry? actionNamespaces)
+        IActionNamespaceRegistry? actionNamespaces,
+        ISet<string> renderedNamespaceIds)
     {
-        if (actionNamespaces == null)
+        if (item.Type != ContextItemType.Window || actionNamespaces == null)
         {
-            return [];
+            return;
         }
 
-        var namespaceIds = items
-            .Where(i => i.Type == ContextItemType.Window)
-            .Select(i => windowManager.Get(i.Content))
-            .Where(w => w != null)
-            .SelectMany(w => w!.NamespaceRefs)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (namespaceIds.Count == 0)
+        var window = windowManager.Get(item.Content);
+        if (window == null)
         {
-            return [];
+            return;
         }
 
-        var definitions = actionNamespaces.GetByIds(namespaceIds)
-            .OrderBy(n => n.Id, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var messages = new List<LlmMessage>(definitions.Count);
-        foreach (var definition in definitions)
+        foreach (var namespaceId in window.NamespaceRefs.Where(id => !string.IsNullOrWhiteSpace(id)))
         {
+            if (renderedNamespaceIds.Contains(namespaceId))
+            {
+                continue;
+            }
+
+            if (!actionNamespaces.TryGet(namespaceId, out var definition) || definition == null)
+            {
+                continue;
+            }
+
             messages.Add(new LlmMessage
             {
                 Role = "user",
                 Content = RenderNamespaceDefinition(definition)
             });
-        }
 
-        return messages;
+            renderedNamespaceIds.Add(definition.Id);
+        }
     }
 
     /// <summary>
